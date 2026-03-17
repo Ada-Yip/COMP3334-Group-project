@@ -12,11 +12,14 @@ Requirements: 6.5, 6.7, 6.6, 6.8, 6.9
 31 March - 1 April: Report writing + Video record
 
 
-
+---
 
 Work Distribution:
+Checkbox:
 - [ ] Unfinished
 - [x] Finished
+
+Context:
 
 - [ ] Basic Client-Server structure & API setup: @Attp1067
 
