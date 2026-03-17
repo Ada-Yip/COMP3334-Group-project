@@ -1,6 +1,6 @@
 # Roadmap:
 
-20 March: Review progress, drop requirement that cannot be finished.
+20 March, 7pm: Review progress, drop requirement that cannot be finished.
 
 22 March: Finish Client-Server model with no encryption.
 Requirements: 6.5, 6.7, 6.6, 6.8, 6.9
