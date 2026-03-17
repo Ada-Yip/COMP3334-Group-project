@@ -1,4 +1,4 @@
-Roadmap:
+# Roadmap:
 
 20 March: Review progress, drop requirement that cannot be finished.
 
@@ -14,12 +14,12 @@ Requirements: 6.5, 6.7, 6.6, 6.8, 6.9
 
 ---
 
-Work Distribution:
-Checkbox:
+# Work Distribution:
+## Checkbox:
 - [ ] Unfinished
 - [x] Finished
 
-Context:
+## Context:
 
 - [ ] Basic Client-Server structure & API setup: @Attp1067
 
