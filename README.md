@@ -23,7 +23,9 @@ Requirements: 6.5, 6.7, 6.6, 6.8, 6.9
 
 - [ ] Basic Client-Server structure & API setup: @Attp1067
 
-- [ ] 6.5 Friends / Contacts: @JJ
+### 6.5 Requirement @JJ
+- [ ] All Finished
+requirements:
 - [ ] (R13) Friend request workflow: @JJ
 • Users must add contacts via a request → accept/decline workflow (not instant adding by 
 default). 
@@ -37,7 +39,9 @@ default).
 requests), or provide an equivalent control with justification.
 
 
-- [ ] 6.7 Offline Messaging (Ciphertext Store-and-Forward): @Lok
+### 6.7 Offline Messaging (Ciphertext Store-and-Forward): @Lok
+- [ ] All Finished
+requirements:
 - [ ] (R20) Offline ciphertext queue: @Lok
 • If the recipient is offline, the server queues messages as ciphertext and relays them when the 
 recipient comes online. 
@@ -49,10 +53,12 @@ recipient comes online.
 • Replay protection must prevent accepting old ciphertext as a new message. 
 
 
-- [ ] 6.6 Message Delivery Status: @Sam
+### 6.6 Message Delivery Status: @Sam
 Delivery indicators are common IM usability features but can leak metadata. Under the HbC 
 server model, you may rely on the server to behave correctly, but you must define the semantics 
 precisely and discuss metadata exposure. 
+- [ ] All Finished
+requirements:
 - [ ] (R17) Minimum delivery states: @Sam
 • Sent: client successfully submitted the message to the server. 
 • Delivered: message has reached the recipient side according to your defined semantics. 
@@ -65,7 +71,9 @@ back to the sender (recommended to protect the ack with E2EE).
 • State what the server learns from delivery status updates (e.g., online timing). 
 
 
-- [ ] 6.8 Conversation List & Unread Counters: @Ada
+### 6.8 Conversation List & Unread Counters: @Ada
+- [ ] All Finished
+requirements:
 - [ ] (R23) Conversation list: @Ada
 • Show a list of conversations (contacts) ordered by most recent activity, including last 
 message time. 
@@ -78,7 +86,9 @@ message time.
 ---
 Encryption 
 
-- [ ] 6.3 E2EE 1:1 Messaging: @
+### 6.3 E2EE 1:1 Messaging: @
+- [ ] All Finished
+requirements:
 - [ ] (R7) Secure session establishment 
 You must implement a secure method for two users to establish shared secrets for messaging. 
 This course does not require a specific design such as X3DH; you may choose any protocol that 
@@ -93,7 +103,9 @@ identifiers, conversation ID, and message counters, so tampering is detected.
 reasonable window defined by your design).
 
 
-- [ ] 6.1 Accounts & Authentication: @
+### 6.1 Accounts & Authentication: @
+- [ ] All Finished
+requirements:
 - [ ] (R1) Registration 
 • Users can register with a unique identifier (e.g., username or email). 
 • Passwords are stored using a modern password hashing scheme with a per-user salt. 
@@ -105,7 +117,9 @@ reasonable window defined by your design).
 • Users can log out; tokens are expired/revoked promptly.
 
 
-- [ ] 6.2 Identity & Key Management: @
+### 6.2 Identity & Key Management: @
+- [ ] All Finished
+requirements:
 - [ ] (R4) Per-device identity keypair 
 • Each client generates and stores a long-term identity keypair locally. 
 • The server stores only the public key(s) needed for others to initiate secure sessions. 
@@ -117,7 +131,9 @@ reasonable window defined by your design).
 • Define your policy (block until re-verified, or allow with warning) and justify it. 
 
 
-- [ ] 6.4 Timed Self-Destruct Messages: @
+### 6.4 Timed Self-Destruct Messages: @
+- [ ] All Finished
+requirements:
 - [ ] (R10) TTL / expiration policy 
 • Support messages that self-destruct after a configurable time duration (e.g., 30 seconds, 10 
 minutes). 
