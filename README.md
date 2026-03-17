@@ -18,57 +18,57 @@ Work Distribution:
 - [ ] Unfinished
 - [x] Finished
 
-- [ ] Basic Client-Server structure: @Attp1067
+- [ ] Basic Client-Server structure & API setup: @Attp1067
 
-- [ ] 6.5 Friends / Contacts: @
-- [ ] (R13) Friend request workflow 
+- [ ] 6.5 Friends / Contacts: @JJ
+- [ ] (R13) Friend request workflow: @JJ
 • Users must add contacts via a request → accept/decline workflow (not instant adding by 
 default). 
 • Users can send friend requests by username/email/contact code. 
-- [ ] (R14) Request lifecycle 
+- [ ] (R14) Request lifecycle: @JJ
 • Receiver can accept or decline; sender can cancel; both can view pending requests. 
-- [ ] (R15) Blocking / removing 
+- [ ] (R15) Blocking / removing: @JJ
 • Users can remove friends and block users; blocked users’ requests/messages are ignored. 
-- [ ] (R16) Default anti-spam control 
+- [ ] (R16) Default anti-spam control: @JJ
 • By default, non-friends must not be able to send arbitrary chat messages (only friend 
 requests), or provide an equivalent control with justification.
 
 
-- [ ] 6.7 Offline Messaging (Ciphertext Store-and-Forward): @
-- [ ] (R20) Offline ciphertext queue 
+- [ ] 6.7 Offline Messaging (Ciphertext Store-and-Forward): @Lok
+- [ ] (R20) Offline ciphertext queue: @Lok
 • If the recipient is offline, the server queues messages as ciphertext and relays them when the 
 recipient comes online. 
-- [ ] (R21) Retention and cleanup 
+- [ ] (R21) Retention and cleanup: @Lok
 • Define a retention policy (e.g., delete after delivery or after max age). 
 • Timed self-destruct TTL must be respected best-effort for queued ciphertext. 
-- [ ] (R22) Duplicate/replay robustness 
+- [ ] (R22) Duplicate/replay robustness: @Lok
 • Clients must safely handle duplicates (e.g., from retries). 
 • Replay protection must prevent accepting old ciphertext as a new message. 
 
 
-- [ ] 6.6 Message Delivery Status: @
+- [ ] 6.6 Message Delivery Status: @Sam
 Delivery indicators are common IM usability features but can leak metadata. Under the HbC 
 server model, you may rely on the server to behave correctly, but you must define the semantics 
 precisely and discuss metadata exposure. 
-- [ ] (R17) Minimum delivery states 
+- [ ] (R17) Minimum delivery states: @Sam
 • Sent: client successfully submitted the message to the server. 
 • Delivered: message has reached the recipient side according to your defined semantics. 
-- [ ] (R18) Define “Delivered” semantics 
+- [ ] (R18) Define “Delivered” semantics: @Sam
 • Option A (simplest): Delivered means the server placed ciphertext into the recipient’s queue 
 or forwarded it to the recipient’s active connection. 
 • Option B (stronger semantics): Delivered means the recipient client sent an acknowledgement 
 back to the sender (recommended to protect the ack with E2EE). 
-- [ ] (R19) Metadata disclosure statement 
+- [ ] (R19) Metadata disclosure statement: @Sam
 • State what the server learns from delivery status updates (e.g., online timing). 
 
 
-- [ ] 6.8 Conversation List & Unread Counters: @
-- [ ] (R23) Conversation list 
+- [ ] 6.8 Conversation List & Unread Counters: @Ada
+- [ ] (R23) Conversation list: @Ada
 • Show a list of conversations (contacts) ordered by most recent activity, including last 
 message time. 
-- [ ] (R24) Unread counters 
+- [ ] (R24) Unread counters: @Ada
 • Maintain and display an unread count per conversation. 
-- [ ] (R25) Paging / incremental loading 
+- [ ] (R25) Paging / incremental loading: @Ada
 • Implement basic pagination or incremental loading to avoid loading all history at once.
 
 
