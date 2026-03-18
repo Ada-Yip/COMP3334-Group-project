@@ -4,10 +4,16 @@ api and enter point
 
 from fastapi import FastAPI, Depends, HTTPException
 from sqlmodel import Session, select
-from database import User, Message, init_db, get_session
+from .database import (
+    User, 
+    Message, 
+    init_db, 
+    get_session, 
+    get_valid_user_id, 
+    check_password
+)
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
-from database import get_valid_user_id, check_password
 import logging
 
 logger = logging.getLogger(__name__)
