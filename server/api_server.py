@@ -1,3 +1,119 @@
 """
 api and enter point
 """
+
+from fastapi import FastAPI, Depends, HTTPException
+from sqlmodel import Session, select
+from database import User, Message, init_db, get_session
+from pydantic import BaseModel
+from contextlib import asynccontextmanager
+from database import get_valid_user_id, check_password
+import logging
+
+logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.INFO)
+
+
+#FastAPI instance
+app = FastAPI(title="EE2E Server")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("starting up server")
+    init_db()
+    logger.info("server started")
+    yield
+    logger.info("shutting down server")
+
+app = FastAPI(lifespan=lifespan)
+
+# Request Acc, using pydantic
+class RegisterReq(BaseModel):
+    user_name: str
+    password: str
+    public_key: str
+
+# Send Message Request
+class SendMsgReq(BaseModel):
+    sender_id: int
+    sender_username: str
+    receiver_id: int
+    receiver_username: str
+    receiver: str
+    ciphertext: str
+    nonce: str
+
+# --- API 端點 ---
+#TODO: add function to generate public key
+@app.post("/register")
+def register(
+    req: RegisterReq, 
+    session: Session = Depends(get_session)
+    ):
+    """register user to database"""
+    new_user = User(user_name=req.user_name, password_hash=req.password, public_key=req.public_key)
+
+    #check if user already exists
+    if session.get(User, new_user.user_name) is not None:
+        logger.error(f"User {req.user_name} already exists")
+        raise HTTPException(status_code=400, detail="User already exists")
+    
+    #check if password is valid
+    if not check_password(req.password):
+        logger.error(f"Password requiement not satisfied for user {req.user_name}")
+        raise HTTPException(status_code=400, detail="Password requiement not satisfied")
+    
+    session.add(new_user)
+    session.commit()
+    logger.info(f"User {req.user_name} registered successfully")
+    return {"message":f"User {req.user_name} registered successfully"}
+
+@app.get("/users/{user_id}/public_key")
+def get_user_public_key(
+    user_id: int = Depends(get_valid_user_id), 
+    session: Session = Depends(get_session)
+    ):
+    """get user public key from database"""
+    user = session.get(User, user_id)
+    return {"public_key": user.public_key}      #TODO: add validation to key changes?
+
+#=======Message API=======
+
+@app.post("/messages/send")
+def send_message(
+    req: SendMsgReq, 
+    session: Session = Depends(get_session)
+    ):
+    """send message to database"""
+    try:
+        msg = Message(
+            sender_id=req.sender_id, sender_username=req.sender_username,
+            receiver_id=req.receiver_id, receiver_username=req.receiver_username,
+            ciphertext=req.ciphertext, 
+            nonce=req.nonce)
+        session.add(msg)
+        session.commit()
+        logger.info(f"Message from {req.sender_username} to {req.receiver_username} queued successfully")
+        return {"message": f"Message from {req.sender_username} to {req.receiver_username} queued successfully"}
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error sending message: {e}")
+        raise HTTPException(status_code=400, detail=f"Bad Request: {e}")
+
+@app.get("/messages/fetch/{user_id}")
+def fetch_messages(
+    user_id: int = Depends(get_valid_user_id), 
+    session: Session = Depends(get_session)
+    ):
+    """user fetch messages from database"""
+    msgs = session.exec(select(Message).where(
+        Message.receiver_id == user_id, 
+        Message.is_delivered == False)
+        ).all()
+    if not msgs:
+        return {"message": "No messages found"}
+    for received_msgs in msgs:
+        received_msgs.is_delivered = True
+        session.add(received_msgs)
+    session.commit()   
+    return {"messages": msgs}
