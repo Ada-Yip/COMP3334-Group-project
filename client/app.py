@@ -1,12 +1,9 @@
 """
 UI for client
 """
-import sys
-import os
 import time
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import SERVER_URL, SHARED_SECRET
-from api_client import ClientAPI, ClientState
+from client.api_client import ClientAPI, ClientState
 
 def print_message_from_response(response:   dict):
     """print message from response"""
