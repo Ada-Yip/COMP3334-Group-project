@@ -52,7 +52,20 @@ class ClientAPI:
     def register_user(self, username: str, password: str) -> dict:
         """register user to server"""
         payload = {"username": username, "password": password, "public_key": self.generate_local_public_key()}
-        return _request_json("POST", f"{self.base_url}/register", payload)
+        response = _request_json("POST", f"{self.base_url}/register", payload)
+        if response.get("status_code") == 200:
+            data = response.get("data")
+            self.state.current_user_id = data["user_id"]
+            self.state.current_username = data["username"]
+        return response
+
+    def get_user_name(self) -> str:
+        """get user name from server"""
+        return self.state.current_username
+
+    def get_user_id(self) -> int:
+        """get user id from server"""
+        return self.state.current_user_id
 
     def send_message(
         self,        

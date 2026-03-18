@@ -76,8 +76,12 @@ def register(
         raise HTTPException(status_code=500, detail="Internal Server Error")
     session.add(new_user)
     session.commit()
+    session.refresh(new_user)
     logger.info(f"User {username_input} registered successfully")
-    return {"message":f"User {username_input} registered successfully"}
+    return {
+        "message": f"User {username_input} registered successfully",
+        "data": {"user_id": new_user.user_id, "username": username_input},
+    }
 
 @app.get("/users/{user_id}/public_key")
 def get_user_public_key(

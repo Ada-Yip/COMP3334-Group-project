@@ -28,7 +28,8 @@ def main():
     client_api = ClientAPI(state=state)
     res = client_api.register_user(register_username, register_password)
     print_message_from_response(res)
-    
+    print(f"Your username is {client_api.get_user_name()}")
+    print(f"Your user id is {client_api.get_user_id()}")
     
 if __name__ == "__main__":
     main()

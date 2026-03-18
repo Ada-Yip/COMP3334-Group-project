@@ -7,6 +7,5 @@ sqlalchemy==2.0.48
 sqlite==3.52.0
 cryptography==46.0.5  
 pydantic==2.12.5
-requests==2.32.5
 charset-normalizer==3.4.6
 
