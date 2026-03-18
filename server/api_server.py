@@ -117,39 +117,37 @@ def send_message(
         logger.error(f"Error sending message: {e}")
         raise HTTPException(status_code=400, detail=f"Bad Request: {e}")
 
-@app.get("/messages/fetch/{user_id}")
+class FetchMsgCond(BaseModel):
+    user_id: int
+    unseen_only: bool
+
+@app.get("/messages/fetch")
 def fetch_messages(
-    user_id: int = Depends(get_valid_user_id), 
+    request: FetchMsgCond, 
     session: Session = Depends(get_session)
     ):
-    """user fetch messages from database"""
-    msgs = session.exec(select(Message).where(
-        Message.receiver_id == user_id, 
-        Message.is_delivered == False)
-        ).all()
+    """
+    user fetch messages from database
+    if unseen_only is True, only fetch unseen messages
+    """
+    user_id = request.user_id
+    unseen_only = request.unseen_only
 
-    # Return a stable response shape that client code can parse reliably.
+    if unseen_only:
+        msgs = session.exec(select(Message).where(
+            Message.receiver_id == user_id, 
+            Message.is_delivered == False)
+            ).all()
+    else:
+        msgs = session.exec(select(Message).where(
+            Message.receiver_id == user_id)
+            ).all()
+
     if not msgs:
         return {"messages": []}
-
-    #  Sam: Now the server should return message body when client use fetch_message().
-
-    serialized_messages = [
-        {
-            "message_id": msg.message_id,
-            "sender_id": msg.sender_id,
-            "sender_username": msg.sender_username,
-            "receiver_id": msg.receiver_id,
-            "receiver_username": msg.receiver_username,
-            "ciphertext": msg.ciphertext,
-            "nonce": msg.nonce,
-            "is_delivered": msg.is_delivered,
-        }
-        for msg in msgs
-    ]
 
     for received_msgs in msgs:
         received_msgs.is_delivered = True
         session.add(received_msgs)
     session.commit()
-    return {"messages": serialized_messages}
+    return {"messages": f"Message fetched: {len(msgs)}"}
