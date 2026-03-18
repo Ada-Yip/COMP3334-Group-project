@@ -65,7 +65,7 @@ def register(
         
         #check if password is valid
         if not check_password(password_input):
-            logger.error(f"Password requiement not satisfied for user {username_input}")
+            logger.error(f"Password requirement not satisfied for user {username_input}")
             session.rollback()
             raise HTTPException(status_code=400, detail="Password requirement not satisfied")
     except HTTPException:
@@ -82,6 +82,30 @@ def register(
         "message": f"User {username_input} registered successfully",
         "data": {"user_id": new_user.user_id, "username": username_input},
     }
+
+@app.post("/login")
+def login(
+        login_req: RegisterReq,
+        session: Session = Depends(get_session)
+    ):
+    try:
+        username_input = login_req.username.strip()
+        password_input = login_req.password.strip()
+        public_key_input = login_req.public_key.strip()
+
+        existing_user = session.exec(select(User).where(User.username_db == username_input)).first()
+        if existing_user is None:
+            logger.error(f"Username or Password incorrect.")
+            session.rollback()
+            raise HTTPException(status_code=400, detail="Username or Password incorrect.")
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error logging in: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+    pass
+#  TODO: Yeah I still need time to figure out how to code "login status".
+
+
 
 @app.get("/users/{user_id}/public_key")
 def get_user_public_key(
@@ -168,3 +192,4 @@ def fetch_messages(
     except Exception as e:
         logger.error(f"Error fetching messages: {e}")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
+
