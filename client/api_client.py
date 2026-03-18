@@ -39,6 +39,13 @@ class ClientAPI:
         """get public key from server"""
         return _request_json("GET", f"{self.base_url}/users/{user_id}/public_key")
 
+    def get_user_name(self) -> str:
+        """get user name from server"""
+        return self.state.current_username
+
+    def get_user_id(self) -> int:
+        """get user id from server"""
+        return self.state.current_user_id
 
     def generate_nonce(self) -> str:
         #TODO: do actual nonce generation
@@ -58,14 +65,6 @@ class ClientAPI:
             self.state.current_user_id = data["user_id"]
             self.state.current_username = data["username"]
         return response
-
-    def get_user_name(self) -> str:
-        """get user name from server"""
-        return self.state.current_username
-
-    def get_user_id(self) -> int:
-        """get user id from server"""
-        return self.state.current_user_id
 
     def send_message(
         self,        
@@ -132,6 +131,8 @@ def _request_json(method: str, url: str, payload: dict | None = None) -> dict:
     except error.URLError as exc:
         return {"status_code": 0, "detail": {"error": str(exc)}}
 
+
+#TODO: fix it later, currently not used
 def reserve_local_message_id(state: ClientState) -> int:
     """Return and advance a local message counter for CLI tracking."""
     local_id = state.next_local_message_id
