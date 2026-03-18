@@ -1,5 +1,6 @@
 """
-database connection
+database connection, 
+the suffix "_db" indicates the variables are from database to reduce confusion
 """
 
 from sqlmodel import Field, SQLModel, create_engine, Session
@@ -57,10 +58,10 @@ class User(SQLModel, table=True):
     User table, user_id = PK
     """
     __tablename__ = "User"
-    user_id: int = Field(default=None, primary_key=True)    
-    user_name: str = Field(index=True, unique=True)     #uniqueness is restricted by register api
+    user_id: Optional[int] = Field(default=None, primary_key=True)    
+    username_db: str = Field(index=True)     #uniqueness is restricted by register api
     password_hash: str
-    public_key: str = Field(default="")
+    public_key_db: str = Field(default="")
 
 class Message(SQLModel, table=True):
     """
@@ -69,9 +70,9 @@ class Message(SQLModel, table=True):
     __tablename__ = "Message"
     message_id: int = Field(default=None, primary_key=True)
     sender_id: int = Field(default=None)
-    sender_username: str
+    sender_username_db: str
     receiver_id: int = Field(default=None)
-    receiver_username: str
+    receiver_username_db: str
     ciphertext: str
     nonce: str
     is_delivered: bool = Field(default=False)

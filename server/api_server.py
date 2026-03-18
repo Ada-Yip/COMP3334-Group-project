@@ -35,9 +35,8 @@ app = FastAPI(lifespan=lifespan)
 
 # Request Acc, using pydantic
 class RegisterReq(BaseModel):
-    user_name: str
+    username: str
     password: str
-    public_key: str
 
 # Send Message Request
 class SendMsgReq(BaseModel):
@@ -50,29 +49,38 @@ class SendMsgReq(BaseModel):
     nonce: str
 
 # --- API 端點 ---
-#TODO: add function to generate public key
+#TODO: add function to generate public key, hash pw
 @app.post("/register")
 def register(
     req: RegisterReq, 
     session: Session = Depends(get_session)
     ):
     """register user to database"""
-    new_user = User(user_name=req.user_name, password_hash=req.password, public_key=req.public_key)
+    try:
+        username_input = req.username.strip()
+        password_input = req.password.strip()
+        new_user = User(username_db=username_input, password_hash=password_input, public_key_db="dummy_key")
 
-    #check if user already exists
-    if session.get(User, new_user.user_name) is not None:
-        logger.error(f"User {req.user_name} already exists")
-        raise HTTPException(status_code=400, detail="User already exists")
-    
-    #check if password is valid
-    if not check_password(req.password):
-        logger.error(f"Password requiement not satisfied for user {req.user_name}")
-        raise HTTPException(status_code=400, detail="Password requiement not satisfied")
-    
+        #check if user already exists
+        existing_user = session.exec(select(User).where(User.username_db == username_input)).first()
+        if existing_user is not None:
+            logger.error(f"User {username_input} already exists")
+            session.rollback()
+            raise HTTPException(status_code=400, detail="User already exists")
+        
+        #check if password is valid
+        if not check_password(password_input):
+            logger.error(f"Password requiement not satisfied for user {username_input}")
+            session.rollback()
+            raise HTTPException(status_code=400, detail="Password requirement not satisfied")
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error registering user: {e}")
+        raise HTTPException(status_code=400, detail=f"Bad Request: {e}")
     session.add(new_user)
     session.commit()
-    logger.info(f"User {req.user_name} registered successfully")
-    return {"message":f"User {req.user_name} registered successfully"}
+    logger.info(f"User {username_input} registered successfully")
+    return {"message":f"User {username_input} registered successfully"}
 
 @app.get("/users/{user_id}/public_key")
 def get_user_public_key(
@@ -81,7 +89,7 @@ def get_user_public_key(
     ):
     """get user public key from database"""
     user = session.get(User, user_id)
-    return {"public_key": user.public_key}      #TODO: add validation to key changes?
+    return {"public_key": user.public_key_db}      #TODO: add validation to key changes?
 
 #=======Message API=======
 
@@ -93,8 +101,8 @@ def send_message(
     """send message to database"""
     try:
         msg = Message(
-            sender_id=req.sender_id, sender_username=req.sender_username,
-            receiver_id=req.receiver_id, receiver_username=req.receiver_username,
+            sender_id=req.sender_id, sender_username_db=req.sender_username,
+            receiver_id=req.receiver_id, receiver_username_db=req.receiver_username,
             ciphertext=req.ciphertext, 
             nonce=req.nonce)
         session.add(msg)

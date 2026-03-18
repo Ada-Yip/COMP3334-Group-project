@@ -2,7 +2,7 @@
 main entry point
 """
 
-from client.UI import main as client_main
+from client.app import main as client_main
 from server.api_server import main as server_main
 from config import SERVER_HOST, SERVER_PORT
 import uvicorn
