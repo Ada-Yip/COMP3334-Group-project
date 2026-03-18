@@ -49,7 +49,12 @@ class SendMsgReq(BaseModel):
     nonce: str
 
 # --- API 端點 ---
+<<<<<<< HEAD
 #TODO: add function to generate public key, hash pw
+=======
+#  TODO: add function to generate public key
+#  Sam: for client-server encryption? We can leave it in next phase.
+>>>>>>> a36b31aaa89006cb07e9477f4481b62e8ba49e03
 @app.post("/register")
 def register(
     req: RegisterReq, 
@@ -124,10 +129,29 @@ def fetch_messages(
         Message.receiver_id == user_id, 
         Message.is_delivered == False)
         ).all()
+
+    # Return a stable response shape that client code can parse reliably.
     if not msgs:
-        return {"message": "No messages found"}
+        return {"messages": []}
+
+    #  Sam: Now the server should return message body when client use fetch_message().
+
+    serialized_messages = [
+        {
+            "message_id": msg.message_id,
+            "sender_id": msg.sender_id,
+            "sender_username": msg.sender_username,
+            "receiver_id": msg.receiver_id,
+            "receiver_username": msg.receiver_username,
+            "ciphertext": msg.ciphertext,
+            "nonce": msg.nonce,
+            "is_delivered": msg.is_delivered,
+        }
+        for msg in msgs
+    ]
+
     for received_msgs in msgs:
         received_msgs.is_delivered = True
         session.add(received_msgs)
-    session.commit()   
-    return {"messages": msgs}
+    session.commit()
+    return {"messages": serialized_messages}

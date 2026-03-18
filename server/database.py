@@ -6,6 +6,7 @@ the suffix "_db" indicates the variables are from database to reduce confusion
 from sqlmodel import Field, SQLModel, create_engine, Session
 from typing import Optional
 import logging
+from pathlib import Path
 from fastapi import HTTPException, Depends
 from sqlmodel import select
 
@@ -13,8 +14,16 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # ======= Database =======
-sqlite_file_name = "database.db"
-DATABASE_URL = f"sqlite:///{sqlite_file_name}"
+# Keep DB path stable regardless of current working directory.
+# I changed the path of database.db into a dir under server/
+# Now it should be always in server/database/database.db
+# Todo: I think it's kinda crazy to put message and user into same database, we skip it? or we make it separate?
+server_dir = Path(__file__).resolve().parent
+database_dir = server_dir / "database"
+database_dir.mkdir(parents=True, exist_ok=True)
+
+sqlite_file_name = database_dir / "database.db"
+DATABASE_URL = f"sqlite:///{sqlite_file_name.as_posix()}"
 engine = create_engine(
     DATABASE_URL, 
     echo=False
