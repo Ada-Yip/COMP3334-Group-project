@@ -37,6 +37,7 @@ app = FastAPI(lifespan=lifespan)
 class RegisterReq(BaseModel):
     username: str
     password: str
+    public_key: str
 
 # Send Message Request
 class SendMsgReq(BaseModel):
@@ -49,12 +50,8 @@ class SendMsgReq(BaseModel):
     nonce: str
 
 # --- API 端點 ---
-<<<<<<< HEAD
-#TODO: add function to generate public key, hash pw
-=======
 #  TODO: add function to generate public key
 #  Sam: for client-server encryption? We can leave it in next phase.
->>>>>>> a36b31aaa89006cb07e9477f4481b62e8ba49e03
 @app.post("/register")
 def register(
     req: RegisterReq, 
@@ -64,7 +61,8 @@ def register(
     try:
         username_input = req.username.strip()
         password_input = req.password.strip()
-        new_user = User(username_db=username_input, password_hash=password_input, public_key_db="dummy_key")
+        public_key_input = req.public_key.strip()
+        new_user = User(username_db=username_input, password_hash=password_input, public_key_db=public_key_input)
 
         #check if user already exists
         existing_user = session.exec(select(User).where(User.username_db == username_input)).first()

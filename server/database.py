@@ -14,10 +14,6 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 # ======= Database =======
-# Keep DB path stable regardless of current working directory.
-# I changed the path of database.db into a dir under server/
-# Now it should be always in server/database/database.db
-# Todo: I think it's kinda crazy to put message and user into same database, we skip it? or we make it separate?
 server_dir = Path(__file__).resolve().parent
 database_dir = server_dir / "database"
 database_dir.mkdir(parents=True, exist_ok=True)
@@ -40,9 +36,7 @@ def get_session():
 #=======Utility Functions=======
 
 def get_valid_user_id(user_id: int, session: Session = Depends(get_session)):
-    """
-    get valid user id from database
-    """
+    """get valid user id from database"""
     try:
         user = session.exec(select(User).where(User.user_id == user_id)).first()
         if not user:
@@ -54,9 +48,7 @@ def get_valid_user_id(user_id: int, session: Session = Depends(get_session)):
         raise HTTPException(status_code=400, detail=f"Bad Request: {e}")
 
 def check_password(password: str):
-    """
-    check if password is valid
-    """
+    """check if password is valid"""
     if len(password) < 8:
         return False
     return True

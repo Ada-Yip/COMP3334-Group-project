@@ -5,10 +5,9 @@ import sys
 import os
 import requests
 import time
-#from crypto_manager import CryptoManager
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import SERVER_URL, SHARED_SECRET
-
+from api_client import register_user
 
 def print_message_from_response(response: requests.Response):
     """print message from response"""
@@ -27,10 +26,7 @@ def main():
     register_username = input("Enter your username (e.g., Alice or Bob): ")
     register_password = input("Enter your password (at least 8 characters): ")
     
-    #crypto = CryptoManager(SHARED_SECRET)
-    res=requests.post(f"{SERVER_URL}/register", json={
-        "username": register_username, "password": register_password
-    })
+    res = register_user(register_username, register_password)
     print_message_from_response(res)
     
 if __name__ == "__main__":
