@@ -33,25 +33,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-# Request Acc, using pydantic
+# --- API 端點 ---
+#  TODO: add function to generate public key
+#  Sam: for client-server encryption? We can leave it in next phase.
+
+
+# Register Request, using pydantic
 class RegisterReq(BaseModel):
     username: str
     password: str
     public_key: str
 
-# Send Message Request
-class SendMsgReq(BaseModel):
-    sender_id: int
-    sender_username: str
-    receiver_id: int
-    receiver_username: str
-    receiver: str
-    ciphertext: str
-    nonce: str
-
-# --- API 端點 ---
-#  TODO: add function to generate public key
-#  Sam: for client-server encryption? We can leave it in next phase.
 @app.post("/register")
 def register(
     req: RegisterReq, 
@@ -76,10 +68,12 @@ def register(
             logger.error(f"Password requiement not satisfied for user {username_input}")
             session.rollback()
             raise HTTPException(status_code=400, detail="Password requirement not satisfied")
+    except HTTPException:
+        raise
     except Exception as e:
         session.rollback()
         logger.error(f"Error registering user: {e}")
-        raise HTTPException(status_code=400, detail=f"Bad Request: {e}")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
     session.add(new_user)
     session.commit()
     logger.info(f"User {username_input} registered successfully")
@@ -96,6 +90,14 @@ def get_user_public_key(
 
 #=======Message API=======
 
+# Send Message Request
+class SendMsgReq(BaseModel):
+    sender_id: int
+    sender_username: str
+    receiver_username: str
+    ciphertext: str
+    nonce: str
+
 @app.post("/messages/send")
 def send_message(
     req: SendMsgReq, 
@@ -103,9 +105,16 @@ def send_message(
     ):
     """send message to database"""
     try:
+        #check if receiver exists
+        receiver = session.exec(select(User).where(User.username_db == req.receiver_username)).first()
+        if not receiver:
+            logger.error(f"Receiver {req.receiver_username} not found")
+            session.rollback()
+            raise HTTPException(status_code=400, detail="Receiver not found")
+
         msg = Message(
             sender_id=req.sender_id, sender_username_db=req.sender_username,
-            receiver_id=req.receiver_id, receiver_username_db=req.receiver_username,
+            receiver_id=receiver.user_id, receiver_username_db=receiver.username_db,
             ciphertext=req.ciphertext, 
             nonce=req.nonce)
         session.add(msg)
@@ -121,7 +130,7 @@ class FetchMsgCond(BaseModel):
     user_id: int
     unseen_only: bool
 
-@app.get("/messages/fetch")
+@app.post("/messages/fetch")
 def fetch_messages(
     request: FetchMsgCond, 
     session: Session = Depends(get_session)
@@ -130,24 +139,28 @@ def fetch_messages(
     user fetch messages from database
     if unseen_only is True, only fetch unseen messages
     """
-    user_id = request.user_id
-    unseen_only = request.unseen_only
+    try:
+        user_id = request.user_id
+        unseen_only = request.unseen_only
 
-    if unseen_only:
-        msgs = session.exec(select(Message).where(
-            Message.receiver_id == user_id, 
-            Message.is_delivered == False)
-            ).all()
-    else:
-        msgs = session.exec(select(Message).where(
-            Message.receiver_id == user_id)
-            ).all()
+        if unseen_only:
+            msgs = session.exec(select(Message).where(
+                Message.receiver_id == user_id, 
+                Message.is_delivered == False)
+                ).all()
+        else:
+            msgs = session.exec(select(Message).where(
+                Message.receiver_id == user_id)
+                ).all()
 
-    if not msgs:
-        return {"messages": []}
+        if not msgs:
+            return {"messages": []}
 
-    for received_msgs in msgs:
-        received_msgs.is_delivered = True
-        session.add(received_msgs)
-    session.commit()
-    return {"messages": f"Message fetched: {len(msgs)}"}
+        for received_msgs in msgs:
+            received_msgs.is_delivered = True
+            session.add(received_msgs)
+        session.commit()
+        return {"messages": f"Message fetched: {len(msgs)}"}
+    except Exception as e:
+        logger.error(f"Error fetching messages: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")

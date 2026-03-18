@@ -75,7 +75,7 @@ class ClientAPI:
             "user_id": self.state.current_user_id,
             "unseen_only": False,
         }
-        return self._request_json("GET", f"{self.base_url}/messages/fetch", payload)
+        return _request_json("POST", f"{self.base_url}/messages/fetch", payload)
 
     def fetch_messages_unseen(self) -> dict:
         """fetch only unseen messages from server"""
@@ -83,10 +83,10 @@ class ClientAPI:
             "user_id": self.state.current_user_id,
             "unseen_only": True,
         }
-        return self._request_json("GET", f"{self.base_url}/messages/fetch", payload)
+        return _request_json("POST", f"{self.base_url}/messages/fetch", payload)
 
 def _request_json(method: str, url: str, payload: dict | None = None) -> dict:
-    """Send an HTTP request and parse JSON response."""
+    """Send an HTTP request and parse JSON response to dictionary"""
     data = None
     headers = {"Accept": "application/json"}
 
@@ -96,17 +96,25 @@ def _request_json(method: str, url: str, payload: dict | None = None) -> dict:
 
     req = request.Request(url=url, data=data, headers=headers, method=method)
 
-    #  Encoding stuff, should not be a problem
     try:
-        with request.urlopen(req) as resp:
-            body = resp.read().decode("utf-8")
-            return json.loads(body) if body else {}
+        with request.urlopen(req) as response:
+            body = response.read().decode("utf-8")
+            parsed = json.loads(body) if body else {}
+            if isinstance(parsed, dict):
+                return {"status_code": response.status, **parsed}   #return unpacked dictionary
+            return {"status_code": response.status, "data": parsed}
     except error.HTTPError as exc:
         body = exc.read().decode("utf-8")
         try:
-            detail = json.loads(body)
+            parsed = json.loads(body) if body else {}
         except json.JSONDecodeError:
-            detail = {"error": body or str(exc)}
+            parsed = {}
+
+        if isinstance(parsed, dict) and "detail" in parsed:
+            detail = parsed.get("detail")
+        else:
+            detail = parsed or (body or str(exc))
+
         return {"status_code": exc.code, "detail": detail}
     except error.URLError as exc:
         return {"status_code": 0, "detail": {"error": str(exc)}}

@@ -41,7 +41,7 @@ def get_valid_user_id(user_id: int, session: Session = Depends(get_session)):
         user = session.exec(select(User).where(User.user_id == user_id)).first()
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        return user.user_id
+        return user
     except Exception as e:
         session.rollback()
         logger.error(f"Error getting valid user id: {e}")
@@ -71,7 +71,7 @@ class Message(SQLModel, table=True):
     __tablename__ = "Message"
     message_id: int = Field(default=None, primary_key=True)
     sender_id: int = Field(default=None)
-    sender_username_db: str
+    sender_username_db: str 
     receiver_id: int = Field(default=None)
     receiver_username_db: str
     ciphertext: str

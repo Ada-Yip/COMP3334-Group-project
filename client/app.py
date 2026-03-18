@@ -3,22 +3,20 @@ UI for client
 """
 import sys
 import os
-import requests
 import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import SERVER_URL, SHARED_SECRET
-from api_client import register_user
+from api_client import ClientAPI, ClientState
 
-def print_message_from_response(response: requests.Response):
+def print_message_from_response(response:   dict):
     """print message from response"""
     try:
-        res = response.json()
-        if response.status_code == 200:
-            print(f"\n[SUCESS]{res.get('message', 'OK')}")
+        if response.get('status_code') == 200:
+            print(f"\n[SUCCESS] {response.get('message', 'OK')}")
         else:
-            print(f"\n[ERROR {response.status_code}] {res.get('detail', 'Unknown error')}")
+            print(f"\n[ERROR {response.get('status_code', 'Unknown error')}] {response.get('detail', 'Unknown error')}")
     except Exception as e:
-        print(f"\n[ERROR {response.status_code}] {e}")
+        print(f"\n[ERROR {response.get('status_code', 'Unknown error')}] {e}")
 
 def main():
     print("========= Secure IM CLI =========\n")
@@ -26,8 +24,11 @@ def main():
     register_username = input("Enter your username (e.g., Alice or Bob): ")
     register_password = input("Enter your password (at least 8 characters): ")
     
-    res = register_user(register_username, register_password)
+    state = ClientState()
+    client_api = ClientAPI(state=state)
+    res = client_api.register_user(register_username, register_password)
     print_message_from_response(res)
+    
     
 if __name__ == "__main__":
     main()
