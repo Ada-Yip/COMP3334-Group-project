@@ -83,19 +83,11 @@ class ClientAPI:
 
     def fetch_messages_all(self) -> dict:
         """fetch all messages from server"""
-        payload = {
-            "user_id": self.state.current_user_id,
-            "unseen_only": False,
-        }
-        return _request_json("POST", f"{self.base_url}/messages/fetch", payload)
+        return _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=false")
 
     def fetch_messages_unseen(self) -> dict:
         """fetch only unseen messages from server"""
-        payload = {
-            "user_id": self.state.current_user_id,
-            "unseen_only": True,
-        }
-        return _request_json("POST", f"{self.base_url}/messages/fetch", payload)
+        return _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=true")
 
 def _request_json(method: str, url: str, payload: dict | None = None) -> dict:
     """Send an HTTP request and parse JSON response to dictionary"""

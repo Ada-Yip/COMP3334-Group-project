@@ -2,18 +2,20 @@
 api and enter point
 """
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Header
 from sqlmodel import Session, select
 from .database import (
     User, 
     Message, 
     init_db, 
     get_session, 
-    get_valid_user_id, 
-    check_password
+    get_valid_user_by_id, 
+    check_password,
+    get_valid_session_from_db
 )
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
+from .auth_service import get_current_user
 import logging
 
 logger = logging.getLogger(__name__)
@@ -32,6 +34,28 @@ async def lifespan(app: FastAPI):
     logger.info("shutting down server")
 
 app = FastAPI(lifespan=lifespan)
+
+#=========Login / Authentication=======
+
+def get_current_user(
+    authorization: str = Header(None),
+    session: Session = Depends(get_session)
+) -> User:
+    """get current user from database"""
+    try:
+        #check if the authorization is valid, whether the user has the token or
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        token = authorization.split(" ")[1]
+        session_db = get_valid_session_from_db(token, session)
+        user = get_valid_user_by_id(session_db.user_id, session=session)
+        return user
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting current user: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
+
 
 # --- API 端點 ---
 #  TODO: add function to generate public key
@@ -109,11 +133,9 @@ def login(
 
 @app.get("/users/{user_id}/public_key")
 def get_user_public_key(
-    user_id: int = Depends(get_valid_user_id), 
-    session: Session = Depends(get_session)
+    user: User = Depends(get_current_user), 
     ):
-    """get user public key from database"""
-    user = session.get(User, user_id)
+    """get user public key from database(for current user)"""
     return {"public_key": user.public_key_db}      #TODO: add validation to key changes?
 
 #=======Message API=======
@@ -154,31 +176,25 @@ def send_message(
         logger.error(f"Error sending message: {e}")
         raise HTTPException(status_code=400, detail=f"Bad Request: {e}")
 
-class FetchMsgCond(BaseModel):
-    user_id: int
-    unseen_only: bool
-
 @app.post("/messages/fetch")
 def fetch_messages(
-    request: FetchMsgCond, 
-    session: Session = Depends(get_session)
+    unseen_only: bool = False,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
     ):
     """
-    user fetch messages from database
-    if unseen_only is True, only fetch unseen messages
+    Current user fetch messages from database.
+    If unseen_only is True, only fetch unseen messages.
     """
     try:
-        user_id = request.user_id
-        unseen_only = request.unseen_only
-
         if unseen_only:
             msgs = session.exec(select(Message).where(
-                Message.receiver_id == user_id, 
+                Message.receiver_id == user.user_id, 
                 Message.is_delivered == False)
                 ).all()
         else:
             msgs = session.exec(select(Message).where(
-                Message.receiver_id == user_id)
+                Message.receiver_id == user.user_id)
                 ).all()
 
         if not msgs:
