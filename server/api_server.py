@@ -15,7 +15,7 @@ from .database import (
 )
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
-from .auth_service import get_current_user
+from .security_service import get_current_user, hash_password, verify_password
 import logging
 
 logger = logging.getLogger(__name__)
@@ -35,26 +35,6 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-#=========Login / Authentication=======
-
-def get_current_user(
-    authorization: str = Header(None),
-    session: Session = Depends(get_session)
-) -> User:
-    """get current user from database"""
-    try:
-        #check if the authorization is valid, whether the user has the token or
-        if not authorization or not authorization.startswith("Bearer "):
-            raise HTTPException(status_code=401, detail="Unauthorized")
-        token = authorization.split(" ")[1]
-        session_db = get_valid_session_from_db(token, session)
-        user = get_valid_user_by_id(session_db.user_id, session=session)
-        return user
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error getting current user: {e}")
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
 
 # --- API 端點 ---
@@ -78,7 +58,8 @@ def register(
         username_input = req.username.strip()
         password_input = req.password.strip()
         public_key_input = req.public_key.strip()
-        new_user = User(username_db=username_input, password_hash=password_input, public_key_db=public_key_input)
+        password_hashed = hash_password(password_input)
+        new_user = User(username_db=username_input, password_hash=password_hashed, public_key_db=public_key_input)
 
         #check if user already exists
         existing_user = session.exec(select(User).where(User.username_db == username_input)).first()
@@ -115,18 +96,25 @@ def login(
     try:
         username_input = login_req.username.strip()
         password_input = login_req.password.strip()
-        public_key_input = login_req.public_key.strip()
 
-        existing_user = session.exec(select(User).where(User.username_db == username_input)).first()
-        if existing_user is None:
+        current_user = session.exec(select(User).where(User.username_db == username_input)).first()
+        if current_user is None:
             logger.error(f"Username or Password incorrect.")
             session.rollback()
             raise HTTPException(status_code=400, detail="Username or Password incorrect.")
+
+        # verify password using bcrypt
+        if not verify_password(password_input, current_user.password_hash):
+            logger.error(f"Username or Password incorrect.")
+            session.rollback()
+            raise HTTPException(status_code=400, detail="Username or Password incorrect.")
+
+        # TODO: issue session token and return to client in future step
     except Exception as e:
         session.rollback()
         logger.error(f"Error logging in: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    pass
+    return {"message": "Login successful"}
 #  TODO: Yeah I still need time to figure out how to code "login status".
 
 
@@ -142,16 +130,15 @@ def get_user_public_key(
 
 # Send Message Request
 class SendMsgReq(BaseModel):
-    sender_id: int
-    sender_username: str
     receiver_username: str
     ciphertext: str
     nonce: str
 
 @app.post("/messages/send")
 def send_message(
-    req: SendMsgReq, 
-    session: Session = Depends(get_session)
+    req: SendMsgReq,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
     ):
     """send message to database"""
     try:
@@ -163,14 +150,14 @@ def send_message(
             raise HTTPException(status_code=400, detail="Receiver not found")
 
         msg = Message(
-            sender_id=req.sender_id, sender_username_db=req.sender_username,
+            sender_id=user.user_id, sender_username_db=user.username_db,
             receiver_id=receiver.user_id, receiver_username_db=receiver.username_db,
             ciphertext=req.ciphertext, 
             nonce=req.nonce)
         session.add(msg)
         session.commit()
-        logger.info(f"Message from {req.sender_username} to {req.receiver_username} queued successfully")
-        return {"message": f"Message from {req.sender_username} to {req.receiver_username} queued successfully"}
+        logger.info(f"Message from {user.username_db} to {req.receiver_username} queued successfully")
+        return {"message": f"Message from {user.username_db} to {req.receiver_username} queued successfully"}
     except Exception as e:
         session.rollback()
         logger.error(f"Error sending message: {e}")

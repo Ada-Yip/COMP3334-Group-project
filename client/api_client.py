@@ -74,8 +74,6 @@ class ClientAPI:
         """send message to server"""
         #TODO: nonce need fixed later
         return _request_json("POST", f"{self.base_url}/messages/send", {
-            "sender_id": self.state.current_user_id,
-            "sender_username": self.state.current_username,
             "receiver_username": receiver_username,
             "ciphertext": ciphertext,
             "nonce": self.generate_nonce(),

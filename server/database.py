@@ -9,7 +9,7 @@ import logging
 from pathlib import Path
 from fastapi import HTTPException, Depends
 from sqlmodel import select
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -47,7 +47,7 @@ class UserSession(SQLModel, table=True):
     __tablename__ = "UserSession"
     token: str = Field(primary_key=True)
     user_id: int = Field(foreign_key="User.user_id")
-    expires_at: datetime
+    expires_at: datetime 
 
 class Message(SQLModel, table=True):
     """
@@ -63,12 +63,44 @@ class Message(SQLModel, table=True):
     nonce: str
     is_delivered: bool = Field(default=False)
 
+#======= User Session Utilities =======
+
+def compute_session_expires_at(ttl_seconds: int, now: Optional[datetime] = None) -> datetime:
+    """
+    Compute the expires_at timestamp for a session, given a TTL in seconds.
+    """
+    base_time = now or datetime.now(timezone.utc)
+    return base_time + timedelta(seconds=ttl_seconds)
+
+
+def refresh_user_session(
+    db_session: Session,
+    user_session: UserSession,
+    ttl_seconds: int,
+    now: Optional[datetime] = None
+) -> UserSession:
+    """
+    Refresh an existing UserSession's expires_at by extending it from 'now' by ttl_seconds.
+    The caller is responsible for committing the transaction.
+    """
+    try:
+        new_expires_at = compute_session_expires_at(ttl_seconds=ttl_seconds, now=now)
+        user_session.expires_at = new_expires_at
+        db_session.add(user_session)
+        db_session.commit()
+        logger.info(f"User session refreshed successfully")
+        return user_session
+    except Exception as e:
+        db_session.rollback()
+        logger.error(f"Error refreshing user session: {e}")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
+
 #=======Utility Functions=======
-#for establishing database connection
+
 def get_session():
+    """for establishing database connection"""
     with Session(engine) as session:
         yield session
-
 
 def get_valid_user_by_id(
     user_id: int, 
@@ -89,10 +121,10 @@ def get_valid_session_from_db(
     token: str, 
     session: Session = Depends(get_session)
     ) -> Session:
-    """get valid session from database"""
+    """get and check valid session from database"""
     try:
         session = session.exec(select(UserSession).where(UserSession.token == token)).first()
-        if session.expires_at < datetime.now():
+        if session.expires_at < datetime.now(timezone.utc):
             raise HTTPException(status_code=401, detail="Session expired")
         return session
     except HTTPException:
