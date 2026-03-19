@@ -5,11 +5,11 @@ api and enter point
 from fastapi import FastAPI, Depends, HTTPException, Header
 from sqlmodel import Session, select
 from .database import (
-    User, 
-    Message, 
-    init_db, 
-    get_session, 
-    get_valid_user_by_id, 
+    User,
+    Message,
+    init_db,
+    get_session,
+    get_valid_user_by_id,
     check_password,
     get_valid_session_from_db
 )
@@ -21,9 +21,9 @@ import logging
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-
 #FastAPI instance
 app = FastAPI(title="EE2E Server")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,8 +33,8 @@ async def lifespan(app: FastAPI):
     yield
     logger.info("shutting down server")
 
-app = FastAPI(lifespan=lifespan)
 
+app = FastAPI(lifespan=lifespan)
 
 
 # --- API 端點 ---
@@ -48,11 +48,12 @@ class RegisterReq(BaseModel):
     password: str
     public_key: str
 
+
 @app.post("/register")
 def register(
-    req: RegisterReq, 
-    session: Session = Depends(get_session)
-    ):
+        req: RegisterReq,
+        session: Session = Depends(get_session)
+):
     """register user to database"""
     try:
         username_input = req.username.strip()
@@ -67,7 +68,7 @@ def register(
             logger.error(f"User {username_input} already exists")
             session.rollback()
             raise HTTPException(status_code=400, detail="User already exists")
-        
+
         #check if password is valid
         if not check_password(password_input):
             logger.error(f"Password requirement not satisfied for user {username_input}")
@@ -88,11 +89,12 @@ def register(
         "data": {"user_id": new_user.user_id, "username": username_input},
     }
 
+
 @app.post("/login")
 def login(
         login_req: RegisterReq,
         session: Session = Depends(get_session)
-    ):
+):
     try:
         username_input = login_req.username.strip()
         password_input = login_req.password.strip()
@@ -115,16 +117,18 @@ def login(
         logger.error(f"Error logging in: {e}")
         raise HTTPException(status_code=500, detail="Internal Server Error")
     return {"message": "Login successful"}
-#  TODO: Yeah I still need time to figure out how to code "login status".
 
+
+#  TODO: Yeah I still need time to figure out how to code "login status".
 
 
 @app.get("/users/{user_id}/public_key")
 def get_user_public_key(
-    user: User = Depends(get_current_user), 
-    ):
+        user: User = Depends(get_current_user),
+):
     """get user public key from database(for current user)"""
-    return {"public_key": user.public_key_db}      #TODO: add validation to key changes?
+    return {"public_key": user.public_key_db}  #TODO: add validation to key changes?
+
 
 #=======Message API=======
 
@@ -134,12 +138,13 @@ class SendMsgReq(BaseModel):
     ciphertext: str
     nonce: str
 
+
 @app.post("/messages/send")
 def send_message(
-    req: SendMsgReq,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
-    ):
+        req: SendMsgReq,
+        user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
+):
     """send message to database"""
     try:
         #check if receiver exists
@@ -152,7 +157,7 @@ def send_message(
         msg = Message(
             sender_id=user.user_id, sender_username_db=user.username_db,
             receiver_id=receiver.user_id, receiver_username_db=receiver.username_db,
-            ciphertext=req.ciphertext, 
+            ciphertext=req.ciphertext,
             nonce=req.nonce)
         session.add(msg)
         session.commit()
@@ -163,12 +168,13 @@ def send_message(
         logger.error(f"Error sending message: {e}")
         raise HTTPException(status_code=400, detail=f"Bad Request: {e}")
 
+
 @app.post("/messages/fetch")
 def fetch_messages(
-    unseen_only: bool = False,
-    user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
-    ):
+        unseen_only: bool = False,
+        user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
+):
     """
     Current user fetch messages from database.
     If unseen_only is True, only fetch unseen messages.
@@ -176,13 +182,13 @@ def fetch_messages(
     try:
         if unseen_only:
             msgs = session.exec(select(Message).where(
-                Message.receiver_id == user.user_id, 
+                Message.receiver_id == user.user_id,
                 Message.is_delivered == False)
-                ).all()
+            ).all()
         else:
             msgs = session.exec(select(Message).where(
                 Message.receiver_id == user.user_id)
-                ).all()
+            ).all()
 
         if not msgs:
             return {"messages": []}
@@ -195,4 +201,3 @@ def fetch_messages(
     except Exception as e:
         logger.error(f"Error fetching messages: {e}")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
-

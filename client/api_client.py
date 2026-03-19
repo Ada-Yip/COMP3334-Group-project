@@ -29,7 +29,7 @@ class ClientAPI:
         self.state: ClientState = state or ClientState(base_url=base_url)
         self.base_url: str = self.state.base_url
 
-#===============Utility Functions========================================
+    #===============Utility Functions========================================
     def generate_local_public_key(self) -> str:
         """generate local public key"""
         #TODO: do actual key generation
@@ -52,9 +52,7 @@ class ClientAPI:
         """generate nonce"""
         return secrets.token_hex(12)
 
-
-
-#===============API Functions==============================================
+    #===============API Functions==============================================
 
     def register_user(self, username: str, password: str) -> dict:
         """register user to server"""
@@ -66,10 +64,19 @@ class ClientAPI:
             self.state.current_username = data["username"]
         return response
 
+    def login(self, username: str, password: str) -> dict:  # TODO: Encrypted login method is not yet done here.
+        payload = {"username": username, "password": password}
+        response = _request_json("POST", f"{self.base_url}/login", payload)
+        if response.get("status_code") == 200:
+            data = response.get("data")
+            self.state.current_user_id = data["user_id"]
+            self.state.current_username = data["username"]
+        return response
+
     def send_message(
-        self,        
-        receiver_username: str,
-        ciphertext: str,
+            self,
+            receiver_username: str,
+            ciphertext: str,
     ) -> dict:
         """send message to server"""
         #TODO: nonce need fixed later
@@ -87,6 +94,7 @@ class ClientAPI:
         """fetch only unseen messages from server"""
         return _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=true")
 
+
 def _request_json(method: str, url: str, payload: dict | None = None) -> dict:
     """Send an HTTP request and parse JSON response to dictionary"""
     data = None
@@ -103,7 +111,7 @@ def _request_json(method: str, url: str, payload: dict | None = None) -> dict:
             body = response.read().decode("utf-8")
             parsed = json.loads(body) if body else {}
             if isinstance(parsed, dict):
-                return {"status_code": response.status, **parsed}   #return unpacked dictionary
+                return {"status_code": response.status, **parsed}  #return unpacked dictionary
             return {"status_code": response.status, "data": parsed}
     except error.HTTPError as exc:
         body = exc.read().decode("utf-8")
