@@ -43,9 +43,6 @@ app = FastAPI(lifespan=lifespan)
 
 
 # --- API 端點 ---
-#  TODO: add function to generate public key
-#  Sam: for client-server encryption? We can leave it in next phase.
-
 
 # Register Request, using pydantic
 class RegisterReq(BaseModel):
