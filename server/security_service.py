@@ -5,10 +5,16 @@ from sqlmodel import Session, select
 from datetime import datetime
 from .database import UserSession, User, get_session
 from fastapi import Depends, HTTPException, Header
-from .database import get_valid_user_by_id, get_valid_session_from_db
-from .database import refresh_user_session
+from .database import (
+    get_valid_user_by_id, 
+    get_valid_session_from_db,
+    refresh_user_session,
+    compute_session_expires_at,
+    UserSession
+    )
 from config import TOKEN_TTL_SECONDS
 import bcrypt
+import secrets
 
 import logging
 logger = logging.getLogger(__name__)
@@ -22,7 +28,7 @@ def hash_password(plain_password: str) -> str:
         hashed = bcrypt.hashpw(plain_password.encode("utf-8"), salt)
         return hashed.decode("utf-8")
     except Exception as e:
-        logger.error(f"Error hashing password: {e}")
+        logger.exception("Error hashing password")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -32,8 +38,8 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     try:
         return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
     except ValueError:
+        logger.exception("Invalid hashed password format during verification")
         return False
-
 
 def get_current_user(
     authorization: str = Header(None),
@@ -58,6 +64,22 @@ def get_current_user(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting current user: {e}")
+        logger.exception("Error getting current user")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
+def create_user_session(user_id: int, session: Session) -> str:
+    """create user session and return random token"""
+    try:
+        token = secrets.token_urlsafe(32)
+        expires_at = compute_session_expires_at(ttl_seconds=TOKEN_TTL_SECONDS)
+        new_session = UserSession(token=token, user_id=user_id, expires_at=expires_at)
+        session.add(new_session)
+        session.commit()
+        logger.info(f"New user session created successfully for user {user_id}")
+        return token
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.exception("Error creating user session")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")

@@ -16,6 +16,7 @@ class ClientState:
     base_url: str = SERVER_URL
     current_user_id: int | None = None
     current_username: str | None = None
+    session_token: str | None = None
     next_local_message_id: int = 1
     seen_message_ids: set[int] = field(default_factory=set)
 
@@ -37,7 +38,7 @@ class ClientAPI:
 
     def get_public_key(self, user_id: int) -> dict:
         """get public key from server"""
-        return _request_json("GET", f"{self.base_url}/users/{user_id}/public_key")
+        return _request_json("GET", f"{self.base_url}/users/{user_id}/public_key", token = self.state.session_token)
 
     def get_user_name(self) -> str:
         """get user name from server"""
@@ -71,6 +72,17 @@ class ClientAPI:
             data = response.get("data")
             self.state.current_user_id = data["user_id"]
             self.state.current_username = data["username"]
+            self.state.session_token = data["token"]
+        return response
+
+    def logout(self) -> dict:
+        """logout user from server"""
+        response = _request_json("POST", f"{self.base_url}/logout", token=self.state.session_token)
+        if response.get("status_code") == 200:
+            self.state.session_token = None
+            self.state.current_user_id = None
+            self.state.current_username = None
+            print("You have been logged out successfully")
         return response
 
     def send_message(
@@ -84,21 +96,32 @@ class ClientAPI:
             "receiver_username": receiver_username,
             "ciphertext": ciphertext,
             "nonce": self.generate_nonce(),
-        })
+        }, token = self.state.session_token)
 
     def fetch_messages_all(self) -> dict:
         """fetch all messages from server"""
-        return _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=false")
+        return _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=false", token = self.state.session_token)
 
     def fetch_messages_unseen(self) -> dict:
         """fetch only unseen messages from server"""
-        return _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=true")
+        return _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=true", token = self.state.session_token)
 
 
-def _request_json(method: str, url: str, payload: dict | None = None) -> dict:
-    """Send an HTTP request and parse JSON response to dictionary"""
+def _request_json(
+    method: str, 
+    url: str, 
+    payload: dict | None = None, 
+    token: str | None = None
+) -> dict:
+    """
+    Send an HTTP request and parse JSON response to dictionary
+    It will add authorization header if token is provided
+    """
     data = None
     headers = {"Accept": "application/json"}
+
+    if token is not None:
+        headers["Authorization"] = f"Bearer {token}"
 
     if payload is not None:
         data = json.dumps(payload).encode("utf-8")

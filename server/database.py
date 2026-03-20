@@ -92,7 +92,7 @@ def refresh_user_session(
         return user_session
     except Exception as e:
         db_session.rollback()
-        logger.error(f"Error refreshing user session: {e}")
+        logger.exception("Error refreshing user session")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
 #=======Utility Functions=======
@@ -112,10 +112,12 @@ def get_valid_user_by_id(
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
         return user
+    except HTTPException:
+        raise
     except Exception as e:
         session.rollback()
-        logger.error(f"Error getting valid user id: {e}")
-        raise HTTPException(status_code=400, detail=f"Bad Request: {e}")
+        logger.exception("Error getting valid user id")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
 def get_valid_session_from_db(
     token: str, 
@@ -131,7 +133,7 @@ def get_valid_session_from_db(
         raise
     except Exception as e:
         session.rollback()
-        logger.error(f"Error getting valid session by token: {e}")
+        logger.exception("Error getting valid session by token")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
 

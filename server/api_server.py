@@ -15,7 +15,12 @@ from .database import (
 )
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
-from .security_service import get_current_user, hash_password, verify_password
+from .security_service import (
+    get_current_user,
+    hash_password, 
+    verify_password,
+    create_user_session,
+    )
 import logging
 
 logger = logging.getLogger(__name__)
@@ -76,9 +81,9 @@ def register(
             raise HTTPException(status_code=400, detail="Password requirement not satisfied")
     except HTTPException:
         raise
-    except Exception as e:
+    except Exception:
         session.rollback()
-        logger.error(f"Error registering user: {e}")
+        logger.exception("Error registering user")
         raise HTTPException(status_code=500, detail="Internal Server Error")
     session.add(new_user)
     session.commit()
@@ -89,10 +94,13 @@ def register(
         "data": {"user_id": new_user.user_id, "username": username_input},
     }
 
+class LoginReq(BaseModel):
+    username: str
+    password: str
 
 @app.post("/login")
 def login(
-        login_req: RegisterReq,
+        login_req: LoginReq,
         session: Session = Depends(get_session)
 ):
     try:
@@ -111,15 +119,44 @@ def login(
             session.rollback()
             raise HTTPException(status_code=400, detail="Username or Password incorrect.")
 
-        # TODO: issue session token and return to client in future step
-    except Exception as e:
+        token = create_user_session(current_user.user_id, session)
+    except HTTPException:
+        raise
+    except Exception:
         session.rollback()
-        logger.error(f"Error logging in: {e}")
+        logger.exception("Error logging in")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    return {"message": "Login successful"}
+    return {"message": "Login successful", 
+            "data": {
+                "token": token, 
+                "user_id": current_user.user_id, 
+                "username": current_user.username_db
+                }
+            }
 
-
-#  TODO: Yeah I still need time to figure out how to code "login status".
+@app.post("/logout")
+def logout(
+        authorization: str = Header(None),
+        session: Session = Depends(get_session),
+):
+    """logout user from database, invalidate session token"""
+    try:
+        if not authorization or not authorization.startswith("Bearer "):
+            raise HTTPException(status_code=401, detail="Unauthorized")
+        token = authorization.split(" ")[1]
+        logged_in_session = get_valid_session_from_db(token, session)
+        if logged_in_session:
+            session.delete(logged_in_session)
+            session.commit()
+            logger.info(f"Session {token} invalidated successfully")
+            logger.info(f"User {logged_in_session.user_id} logged out successfully")
+        return {"message": "Logout successful"}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Error logging out")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @app.get("/users/{user_id}/public_key")
@@ -163,10 +200,12 @@ def send_message(
         session.commit()
         logger.info(f"Message from {user.username_db} to {req.receiver_username} queued successfully")
         return {"message": f"Message from {user.username_db} to {req.receiver_username} queued successfully"}
-    except Exception as e:
+    except HTTPException:
+        raise
+    except Exception:
         session.rollback()
-        logger.error(f"Error sending message: {e}")
-        raise HTTPException(status_code=400, detail=f"Bad Request: {e}")
+        logger.exception("Error sending message")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
 
 
 @app.post("/messages/fetch")
@@ -199,5 +238,5 @@ def fetch_messages(
         session.commit()
         return {"messages": f"Message fetched: {len(msgs)}"}
     except Exception as e:
-        logger.error(f"Error fetching messages: {e}")
+        logger.exception("Error fetching messages")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")

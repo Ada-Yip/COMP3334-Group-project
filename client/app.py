@@ -21,16 +21,42 @@ def print_message_from_response(response:   dict):
 def main():
     print("========= Secure IM CLI =========\n")
     print("Your input will be stripped of whitespace and case sensitivity")
-    register_username = input("Enter your username (e.g., Alice or Bob): ")
-    register_password = input("Enter your password (at least 8 characters): ")
-    
-    state = ClientState()
-    client_obj = ClientAPI(state=state)
-    res = client_obj.register_user(register_username, register_password)
-    print_message_from_response(res)
-    print(f"Your username is {client_obj.get_user_name()}")
-    print(f"Your user id is {client_obj.get_user_id()}")
-    
+    print("============Do you want to login?============\n")
+    login_flag = False
+    login = input("Enter 'y' to login, 'n' to register: ")
+    if login == 'y':
+        login_flag = True
+        while True:
+            print("============Login============\n")
+            input_username = input("Enter your username: ")
+            input_password = input("Enter your password: ")
+            state = ClientState()
+            client_obj = ClientAPI(state=state)
+            res = client_obj.login(input_username, input_password)
+            print_message_from_response(res)
+            if res.get("status_code") == 200:
+                login_flag = True
+                break
+            else:
+                print("Login failed, please try again")
+                continue
+    else:
+        while True:
+            print("============Register============\n")
+            input_username = input("Enter your username: ")
+            input_password = input("Enter your password: ")
+            state = ClientState()
+            client_obj = ClientAPI(state=state)
+            res = client_obj.register_user(input_username, input_password)
+            print_message_from_response(res)
+            if res.get("status_code") == 200:
+                login_flag = True
+                break
+            else:
+                print("Login failed, please try again")
+                continue
+
+
     print("===========Do you want to send a message?===========\n")
     send_message_flag = False
     send_message = input("Enter 'y' to send a message, 'n' to exit: ")
@@ -61,6 +87,15 @@ def main():
         else:
             res = client_obj.fetch_messages_unseen()
             print_message_from_response(res)
+
+    print("===========Do you want to logout?===========\n")
+    logout = input("Enter 'y' to logout, 'n' to exit: ")
+    if logout == 'y':
+        res = client_obj.logout()
+        print_message_from_response(res)
+        return
+    else:
+        return
 
 
 if __name__ == "__main__":
