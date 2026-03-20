@@ -10,6 +10,7 @@ from .database import (
     init_db,
     get_session,
     get_valid_user_by_id,
+    get_valid_user_by_username,
     check_password,
     get_valid_session_from_db
 )
@@ -158,10 +159,12 @@ def logout(
 
 @app.get("/users/{user_id}/public_key")
 def get_user_public_key(
-        user: User = Depends(get_current_user),
+        user_id: int,
+        session: Session = Depends(get_session),
 ):
     """get user public key from database(for current user)"""
-    return {"public_key": user.public_key_db}  #TODO: add validation to key changes?
+    target_user = get_valid_user_by_id(user_id, session=session)
+    return {"public_key": target_user.public_key_db}  #TODO: add validation to key changes?
 
 
 #=======Message API=======
@@ -178,16 +181,12 @@ def send_message(
         req: SendMsgReq,
         user: User = Depends(get_current_user),
         session: Session = Depends(get_session),
-):
+)->dict:
     """send message to database"""
     try:
         #check if receiver exists
-        receiver = session.exec(select(User).where(User.username_db == req.receiver_username)).first()
-        if not receiver:
-            logger.error(f"Receiver {req.receiver_username} not found")
-            session.rollback()
-            raise HTTPException(status_code=400, detail="Receiver not found")
-
+        receiver = req.receiver_username.strip()
+        receiver = get_valid_user_by_username(username=receiver, session=session)
         msg = Message(
             sender_id=user.user_id, sender_username_db=user.username_db,
             receiver_id=receiver.user_id, receiver_username_db=receiver.username_db,
@@ -210,6 +209,7 @@ def fetch_messages(
         unseen_only: bool = False,
         user: User = Depends(get_current_user),
         session: Session = Depends(get_session),
+        
 ):
     """
     Current user fetch messages from database.
@@ -227,13 +227,24 @@ def fetch_messages(
             ).all()
 
         if not msgs:
-            return {"messages": []}
-
-        for received_msgs in msgs:
-            received_msgs.is_delivered = True
-            session.add(received_msgs)
+            return {"data": {"messages": []}}
+        
+        messages_list = []
+        for m in msgs:
+            messages_list.append({
+                "sender_username": m.sender_username_db,
+                "receiver_username": m.receiver_username_db,
+                "ciphertext": m.ciphertext,
+                "nonce": m.nonce
+            })
+            m.is_delivered = True
+            session.add(m)
         session.commit()
-        return {"messages": f"Message fetched: {len(msgs)}"}
+        return {
+            "data": {
+                "messages": messages_list
+            }
+            }
     except Exception as e:
         logger.exception("Error fetching messages")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")

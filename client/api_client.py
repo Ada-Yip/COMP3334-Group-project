@@ -100,11 +100,35 @@ class ClientAPI:
 
     def fetch_messages_all(self) -> dict:
         """fetch all messages from server"""
-        return _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=false", token = self.state.session_token)
+        msg_response = _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=false", token = self.state.session_token)
+        if msg_response.get("status_code") == 200:
+            messages = msg_response.get("data").get("messages")
+            self.show_messages(messages)
+        return msg_response
 
     def fetch_messages_unseen(self) -> dict:
         """fetch only unseen messages from server"""
-        return _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=true", token = self.state.session_token)
+        msg_response = _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=true", token = self.state.session_token)
+        if msg_response.get("status_code") == 200:
+            messages = msg_response.get("data").get("messages")
+            self.show_messages(messages)
+        return msg_response
+
+    #TODO: add decryption for messages
+    def show_messages(self, messages: dict) -> None:
+        """show messages"""
+        if not messages:
+            print("No messages to show")
+            return
+        print("===========Messages===========\n")
+        print(f"Total messages: {len(messages)}")
+        for message in messages:
+            print(f"From: {message.get('sender_username')}")
+            print(f"To: {message.get('receiver_username')}")
+            print(f"Ciphertext: {message.get('ciphertext')}")
+            print(f"Nonce: {message.get('nonce')}")
+            print("--------------------------------")
+        print("===========End of Messages===========\n")
 
 
 def _request_json(

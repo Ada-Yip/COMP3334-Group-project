@@ -119,16 +119,40 @@ def get_valid_user_by_id(
         logger.exception("Error getting valid user id")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
+def get_valid_user_by_username(
+    username: str,
+    session: Session = Depends(get_session)
+    ) -> User:
+    """get valid user from database"""
+    try:
+        user = session.exec(select(User).where(User.username_db == username)).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
+    except HTTPException:
+        raise
+    except Exception as e:
+        session.rollback()
+        logger.exception("Error getting valid user by username")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
+
 def get_valid_session_from_db(
     token: str, 
     session: Session = Depends(get_session)
-    ) -> Session:
+    ) -> UserSession:
     """get and check valid session from database"""
     try:
-        session = session.exec(select(UserSession).where(UserSession.token == token)).first()
-        if session.expires_at < datetime.now(timezone.utc):
+        user_session = session.exec(select(UserSession).where(UserSession.token == token)).first()
+        if not user_session:
+            raise HTTPException(status_code=401, detail="Session not found")
+        #avoid timezone issues
+        expires_at_checked = user_session.expires_at
+        if expires_at_checked.tzinfo is None:
+            expires_at_checked = expires_at_checked.replace(tzinfo=timezone.utc)
+        
+        if expires_at_checked < datetime.now(timezone.utc):
             raise HTTPException(status_code=401, detail="Session expired")
-        return session
+        return user_session
     except HTTPException:
         raise
     except Exception as e:
