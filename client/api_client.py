@@ -125,8 +125,7 @@ class ClientAPI:
         for message in messages:
             print(f"From: {message.get('sender_username')}")
             print(f"To: {message.get('receiver_username')}")
-            print(f"Ciphertext: {message.get('ciphertext')}")
-            print(f"Nonce: {message.get('nonce')}")
+            print(f"Message: {message.get('plaintext')}")
             print("--------------------------------")
         print("===========End of Messages===========\n")
 

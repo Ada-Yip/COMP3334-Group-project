@@ -190,6 +190,7 @@ def send_message(
         msg = Message(
             sender_id=user.user_id, sender_username_db=user.username_db,
             receiver_id=receiver.user_id, receiver_username_db=receiver.username_db,
+            plaintext=req.plaintext,
             ciphertext=req.ciphertext,
             nonce=req.nonce)
         session.add(msg)
