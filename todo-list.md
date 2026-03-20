@@ -21,7 +21,7 @@ Requirements: 6.5, 6.7, 6.6, 6.8, 6.9
 
 ## Context:
 
-- [ ] Basic Client-Server structure & API setup: @Attp1067
+- [x] Basic Client-Server structure & API setup: @Attp1067
 
 ### 6.5 Requirement @JJ
 - [ ] All Finished
@@ -42,13 +42,13 @@ requests), or provide an equivalent control with justification.
 ### 6.7 Offline Messaging (Ciphertext Store-and-Forward): @Lok
 - [ ] All Finished
 requirements:
-- [ ] (R20) Offline ciphertext queue: @Lok
+- [x] (R20) Offline ciphertext queue: @Lok
 • If the recipient is offline, the server queues messages as ciphertext and relays them when the 
 recipient comes online. 
 - [ ] (R21) Retention and cleanup: @Lok
 • Define a retention policy (e.g., delete after delivery or after max age). 
 • Timed self-destruct TTL must be respected best-effort for queued ciphertext. 
-- [ ] (R22) Duplicate/replay robustness: @Lok
+- [x] (R22) Duplicate/replay robustness: @Lok
 • Clients must safely handle duplicates (e.g., from retries). 
 • Replay protection must prevent accepting old ciphertext as a new message. 
 
@@ -59,14 +59,12 @@ server model, you may rely on the server to behave correctly, but you must defin
 precisely and discuss metadata exposure. 
 - [ ] All Finished
 requirements:
-- [ ] (R17) Minimum delivery states: @Sam
+- [x] (R17) Minimum delivery states: @Sam
 • Sent: client successfully submitted the message to the server. 
 • Delivered: message has reached the recipient side according to your defined semantics. 
-- [ ] (R18) Define “Delivered” semantics: @Sam
+- [x] (R18) Define “Delivered” semantics: @Sam
 • Option A (simplest): Delivered means the server placed ciphertext into the recipient’s queue 
 or forwarded it to the recipient’s active connection. 
-• Option B (stronger semantics): Delivered means the recipient client sent an acknowledgement 
-back to the sender (recommended to protect the ack with E2EE). 
 - [ ] (R19) Metadata disclosure statement: @Sam
 • State what the server learns from delivery status updates (e.g., online timing). 
 
