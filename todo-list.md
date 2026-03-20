@@ -77,7 +77,7 @@ requirements:
 - [ ] (R23) Conversation list: @Ada
 • Show a list of conversations (contacts) ordered by most recent activity, including last 
 message time. 
-- [ ] (R24) Unread counters: @Ada
+- [x] (R24) Unread counters: @Ada
 • Maintain and display an unread count per conversation. 
 - [ ] (R25) Paging / incremental loading: @Ada
 • Implement basic pagination or incremental loading to avoid loading all history at once.
@@ -106,14 +106,14 @@ reasonable window defined by your design).
 ### 6.1 Accounts & Authentication: @
 - [ ] All Finished
 requirements:
-- [ ] (R1) Registration 
+- [x] (R1) Registration 
 • Users can register with a unique identifier (e.g., username or email). 
 • Passwords are stored using a modern password hashing scheme with a per-user salt. 
 • Basic password policy and rate limiting for registration/login. 
 - [ ] (R2) Login with Password + OTP 
 • Support login with password plus a second factor (OTP). 
 • Sessions/tokens must expire and be bound to the authenticated user. 
-- [ ] (R3) Logout / session invalidation 
+- [x] (R3) Logout / session invalidation 
 • Users can log out; tokens are expired/revoked promptly.
 
 

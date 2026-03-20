@@ -190,9 +190,9 @@ def send_message(
         msg = Message(
             sender_id=user.user_id, sender_username_db=user.username_db,
             receiver_id=receiver.user_id, receiver_username_db=receiver.username_db,
-            plaintext=req.plaintext,
             ciphertext=req.ciphertext,
-            nonce=req.nonce)
+            nonce=req.nonce
+            )
         session.add(msg)
         session.commit()
         logger.info(f"Message from {user.username_db} to {req.receiver_username} queued successfully")
@@ -209,43 +209,69 @@ def send_message(
 def fetch_messages(
         unseen_only: bool = False,
         user: User = Depends(get_current_user),
-        session: Session = Depends(get_session),
-        
+        session: Session = Depends(get_session),        
 ):
     """
     Current user fetch messages from database.
     If unseen_only is True, only fetch unseen messages.
     """
     try:
-        if unseen_only:
-            msgs = session.exec(select(Message).where(
+        #=========unseen_only=true=========
+        unseen_msgs = session.exec(
+            select(Message).where(
                 Message.receiver_id == user.user_id,
-                Message.is_delivered == False)
-            ).all()
-        else:
-            msgs = session.exec(select(Message).where(
-                Message.receiver_id == user.user_id)
-            ).all()
+                Message.is_delivered == False
+            )
+        ).all()
 
-        if not msgs:
-            return {"data": {"messages": []}}
-        
-        messages_list = []
-        for m in msgs:
-            messages_list.append({
+        unseen_messages_count = len(unseen_msgs)
+        for m in unseen_msgs:
+            m.is_delivered = True
+
+        messages_list_unseen = [
+            {
                 "sender_username": m.sender_username_db,
                 "receiver_username": m.receiver_username_db,
                 "ciphertext": m.ciphertext,
-                "nonce": m.nonce
-            })
-            m.is_delivered = True
-            session.add(m)
+                "nonce": m.nonce,
+            }
+            for m in unseen_msgs
+        ]
+
+        if unseen_only:
+            session.commit()
+            return {
+                "data": {
+                    "messages": messages_list_unseen,
+                    "unseen_count": unseen_messages_count,
+                }
+            }
+
+        #=========unseen_only=false=========
+        msgs_all = session.exec(
+            select(Message).where(Message.receiver_id == user.user_id)
+        ).all()
+
+        messages_list_all = [
+            {
+                "sender_username": m.sender_username_db,
+                "receiver_username": m.receiver_username_db,
+                "ciphertext": m.ciphertext,
+                "nonce": m.nonce,
+            }
+            for m in msgs_all
+        ]
+
         session.commit()
         return {
             "data": {
-                "messages": messages_list
+                "messages": messages_list_all,
+                "unseen_count": unseen_messages_count,
             }
-            }
+        }
+    except HTTPException:
+        raise
     except Exception as e:
+        session.rollback()
         logger.exception("Error fetching messages")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")

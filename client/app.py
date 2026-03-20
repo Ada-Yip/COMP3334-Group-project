@@ -50,6 +50,8 @@ def main():
             res = client_obj.register_user(input_username, input_password)
             print_message_from_response(res)
             if res.get("status_code") == 200:
+                print("account registered and logged in successfully")
+                login_res = client_obj.login(input_username, input_password)
                 login_flag = True
                 break
             else:

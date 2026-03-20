@@ -6,7 +6,8 @@ import json
 import secrets
 from dataclasses import dataclass, field
 from urllib import error, request
-from config import SERVER_URL
+from config import SERVER_URL, SHARED_SECRET
+from crypto_manager import CryptoManager
 
 
 @dataclass
@@ -29,6 +30,7 @@ class ClientAPI:
     def __init__(self, base_url: str = SERVER_URL, state: ClientState | None = None):
         self.state: ClientState = state or ClientState(base_url=base_url)
         self.base_url: str = self.state.base_url
+        self.crypto_manager = CryptoManager(shared_key=SHARED_SECRET)
 
     #===============Utility Functions========================================
     def generate_local_public_key(self) -> str:
@@ -88,45 +90,68 @@ class ClientAPI:
     def send_message(
             self,
             receiver_username: str,
-            ciphertext: str,
+            plaintext: str,
     ) -> dict:
         """send message to server"""
-        #TODO: nonce need fixed later
+        #TODO: add a date time to it
+        encrypted_text, actual_nonce = self.crypto_manager.encrypt(plaintext)
         return _request_json("POST", f"{self.base_url}/messages/send", {
             "receiver_username": receiver_username,
-            "ciphertext": ciphertext,
-            "nonce": self.generate_nonce(),
+            "plaintext": plaintext,
+            "ciphertext": encrypted_text,
+            "nonce": actual_nonce,
         }, token = self.state.session_token)
 
     def fetch_messages_all(self) -> dict:
         """fetch all messages from server"""
         msg_response = _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=false", token = self.state.session_token)
         if msg_response.get("status_code") == 200:
-            messages = msg_response.get("data").get("messages")
-            self.show_messages(messages)
+            data_payload = msg_response.get("data") or {}
+            self.show_messages(data_payload)
         return msg_response
 
     def fetch_messages_unseen(self) -> dict:
         """fetch only unseen messages from server"""
         msg_response = _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=true", token = self.state.session_token)
         if msg_response.get("status_code") == 200:
-            messages = msg_response.get("data").get("messages")
-            self.show_messages(messages)
+            data_payload = msg_response.get("data") or {}
+            self.show_messages(data_payload)
         return msg_response
 
-    #TODO: add decryption for messages
-    def show_messages(self, messages: dict) -> None:
-        """show messages"""
-        if not messages:
+
+    def show_messages(self, data_payload: dict) -> None:
+        """
+        show messages, decrypt ciphertext and nonce
+        """
+        if not data_payload:
             print("No messages to show")
             return
         print("===========Messages===========\n")
+        messages = data_payload.get("messages") or []
+        unseen_count = data_payload.get("unseen_count")
         print(f"Total messages: {len(messages)}")
+        if unseen_count is None:
+            print("Total unseesn: N/A")
+        else:
+            print(f"Total unseesn: {unseen_count}")
         for message in messages:
-            print(f"From: {message.get('sender_username')}")
-            print(f"To: {message.get('receiver_username')}")
-            print(f"Message: {message.get('plaintext')}")
-            print("--------------------------------")
+            sender = message.get('sender_username')
+            receiver = message.get('receiver_username')
+            ciphertext = message.get('ciphertext')
+            nonce = message.get('nonce')
+
+            print(f"From: {sender}")
+            print(f"To: {receiver}")
+            try:
+                if ciphertext and nonce:
+                    plaintext = self.crypto_manager.decrypt(ciphertext, nonce)
+                    print(f"Message: {plaintext}")
+                else:
+                    print(f"Message: [Error] Missing ciphertext or nonce")
+            except Exception as e:
+                print(f"Message: [Decryption Failed - Data corrupted or wrong key]")
+                print(f"Ciphertext: {ciphertext}")  #for debug
+        print("--------------------------------")
         print("===========End of Messages===========\n")
 
 
