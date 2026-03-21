@@ -65,7 +65,7 @@ requirements:
 - [x] (R18) Define “Delivered” semantics: @Sam
 • Option A (simplest): Delivered means the server placed ciphertext into the recipient’s queue 
 or forwarded it to the recipient’s active connection. 
-- [ ] (R19) Metadata disclosure statement: @Sam
+- [x] (R19) Metadata disclosure statement: @Sam
 • State what the server learns from delivery status updates (e.g., online timing). 
 
 
