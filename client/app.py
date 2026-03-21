@@ -27,40 +27,63 @@ def normalize_choice(user_input: str) -> str:
 
 
 def main():
-    print("========= Secure IM CLI =========\n")
-    print("Your input will be stripped of whitespace and case sensitivity")
-    print("============Do you want to login?============\n")
-    login = normalize_choice(input("Enter 'y' to login, 'n' to register: "))
-    if login == 'y':
-        while True:
-            print("============Login============\n")
-            input_username = input("Enter your username: ")
-            input_password = input("Enter your password: ")
-            state = ClientState()
-            client_obj = ClientAPI(state=state)
-            res = client_obj.login(input_username, input_password)
-            print_message_from_response(res)
-            if res.get("status_code") == 200:
-                break
-            else:
-                print("Login failed, please try again")
-                continue
-    else:
-        while True:
-            print("============Register============\n")
-            input_username = input("Enter your username: ")
-            input_password = input("Enter your password: ")
-            state = ClientState()
-            client_obj = ClientAPI(state=state)
-            res = client_obj.register_user(input_username, input_password)
-            print_message_from_response(res)
-            if res.get("status_code") == 200:
-                print("account registered and logged in successfully")
-                client_obj.login(input_username, input_password)
-                break
-            else:
-                print("Login failed, please try again")
-                continue
+
+    login_register = True
+    while login_register:
+        print("========= Secure IM CLI =========\n")
+        print("Your input will be stripped of whitespace and case sensitivity")
+        print("============Do you want to login?============\n")
+        login = normalize_choice(input("Enter 'y' to login, 'n' to register: "))
+        if login == 'y':
+            while True:
+                print("============Login============\n")
+                input_username = input("Enter your username: ")
+                if input_username == "exit":  # Add Magic Word to exit the application at any point during login/registration
+                    print("Returning to login/registration choice.")
+                    break
+                input_password = input("Enter your password: ")
+                if input_password == "exit":
+                    print("Returning to login/registration choice.")
+                    break
+                state = ClientState()
+                client_obj = ClientAPI(state=state)
+                res = client_obj.login(input_username, input_password)
+                print_message_from_response(res)
+                if res.get("status_code") == 200:
+                    login_register = False
+                    break
+                else:
+                    print("Login failed, please try again")
+                    continue
+        elif login == 'n':
+            while True:
+                print("============Register============\n")
+                input_username = input("Enter your username: ")
+                if input_username == "exit":
+                    print("Returning to login/registration choice.")
+                    break
+                input_password = input("Enter your password: ")
+                if input_password == "exit":
+                    print("Returning to login/registration choice.")
+                    break
+                state = ClientState()
+                client_obj = ClientAPI(state=state)
+                res = client_obj.register_user(input_username, input_password)
+                print_message_from_response(res)
+                if res.get("status_code") == 200:
+                    print("account registered and logged in successfully")
+                    client_obj.login(input_username, input_password)
+                    login_register = False
+                    break
+                else:
+                    print("Login failed, please try again")
+                    continue
+        elif login == 'exit':
+            print("Exiting application.")
+            return
+        else:
+            print("Invalid choice. Please enter 'y' or 'n'.")
+
 
     while True:
         print("\n===========What would you like to do?===========")
