@@ -9,7 +9,8 @@ import logging
 from pathlib import Path
 from fastapi import HTTPException, Depends
 from sqlmodel import select
-from datetime import datetime, timedelta, timezone
+import time
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -22,12 +23,40 @@ database_dir.mkdir(parents=True, exist_ok=True)
 sqlite_file_name = database_dir / "database.db"
 DATABASE_URL = f"sqlite:///{sqlite_file_name.as_posix()}"
 engine = create_engine(
-    DATABASE_URL, 
+    DATABASE_URL,
     echo=False
-    )
+)
+
 
 def init_db():
     SQLModel.metadata.create_all(engine)
+    normalize_session_expiry_storage()
+
+
+def normalize_session_expiry_storage() -> None:
+    """Best-effort migration to keep expires_at persisted as Unix seconds."""
+    try:
+        with Session(engine) as session:
+            session.exec(text(
+                """
+                UPDATE UserSession
+                SET expires_at = CAST(expires_at AS INTEGER)
+                WHERE typeof(expires_at) = 'text' AND trim(expires_at) GLOB '[0-9]*'
+                """
+            ))
+            session.exec(text(
+                """
+                UPDATE UserSession
+                SET expires_at = CAST(strftime('%s', expires_at) AS INTEGER)
+                WHERE typeof(expires_at) = 'text'
+                  AND trim(expires_at) LIKE '____-__-__%'
+                  AND strftime('%s', expires_at) IS NOT NULL
+                """
+            ))
+            session.commit()
+    except Exception as e:
+        logger.warning(f"Session expiry migration skipped: {e}")
+
 
 # ======= Tables =======
 class User(SQLModel, table=True):
@@ -35,10 +64,11 @@ class User(SQLModel, table=True):
     User table, user_id = PK
     """
     __tablename__ = "User"
-    user_id: Optional[int] = Field(default=None, primary_key=True)    
-    username_db: str = Field(index=True)     #uniqueness is restricted by register api
+    user_id: Optional[int] = Field(default=None, primary_key=True)
+    username_db: str = Field(index=True)  #uniqueness is restricted by register api
     password_hash: str
     public_key_db: str = Field(default="")
+
 
 class UserSession(SQLModel, table=True):
     """
@@ -47,7 +77,8 @@ class UserSession(SQLModel, table=True):
     __tablename__ = "UserSession"
     token: str = Field(primary_key=True)
     user_id: int = Field(foreign_key="User.user_id")
-    expires_at: datetime 
+    expires_at: int
+
 
 class Message(SQLModel, table=True):
     """
@@ -56,28 +87,32 @@ class Message(SQLModel, table=True):
     __tablename__ = "Message"
     message_id: int = Field(default=None, primary_key=True)
     sender_id: int = Field(default=None)
-    sender_username_db: str 
+    sender_username_db: str
     receiver_id: int = Field(default=None)
     receiver_username_db: str
     ciphertext: str
     nonce: str
     is_delivered: bool = Field(default=False)
 
+
 #======= User Session Utilities =======
 
-def compute_session_expires_at(ttl_seconds: int, now: Optional[datetime] = None) -> datetime:
+def compute_session_expires_at(ttl_seconds: int, now: Optional[int] = None) -> int:
     """
-    Compute the expires_at timestamp for a session, given a TTL in seconds.
+    Compute the expires_at unix timestamp for a session, given a TTL in seconds.
     """
-    base_time = now or datetime.now(timezone.utc)
-    return base_time + timedelta(seconds=ttl_seconds)
+    if now != None:
+        base_time = now
+    else:
+        base_time = int(time.time())
+    return base_time + ttl_seconds
 
 
 def refresh_user_session(
-    db_session: Session,
-    user_session: UserSession,
-    ttl_seconds: int,
-    now: Optional[datetime] = None
+        db_session: Session,
+        user_session: UserSession,
+        ttl_seconds: int,
+        now: Optional[int] = None
 ) -> UserSession:
     """
     Refresh an existing UserSession's expires_at by extending it from 'now' by ttl_seconds.
@@ -95,6 +130,22 @@ def refresh_user_session(
         logger.exception("Error refreshing user session")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
+
+def coerce_epoch_seconds(value: object) -> Optional[int]:
+    """Best-effort conversion for persisted session expiry values."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            return int(stripped)
+    return None
+
+
 #=======Utility Functions=======
 
 def get_session():
@@ -102,10 +153,11 @@ def get_session():
     with Session(engine) as session:
         yield session
 
+
 def get_valid_user_by_id(
-    user_id: int, 
-    session: Session = Depends(get_session)
-    ) -> User:
+        user_id: int,
+        session: Session = Depends(get_session)
+) -> User:
     """get valid user from database"""
     try:
         user = session.exec(select(User).where(User.user_id == user_id)).first()
@@ -119,10 +171,11 @@ def get_valid_user_by_id(
         logger.exception("Error getting valid user id")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
+
 def get_valid_user_by_username(
-    username: str,
-    session: Session = Depends(get_session)
-    ) -> User:
+        username: str,
+        session: Session = Depends(get_session)
+) -> User:
     """get valid user from database"""
     try:
         user = session.exec(select(User).where(User.username_db == username)).first()
@@ -136,22 +189,29 @@ def get_valid_user_by_username(
         logger.exception("Error getting valid user by username")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
+
 def get_valid_session_from_db(
-    token: str, 
-    session: Session = Depends(get_session)
-    ) -> UserSession:
+        token: str,
+        session: Session = Depends(get_session)
+) -> UserSession:
     """get and check valid session from database"""
     try:
         user_session = session.exec(select(UserSession).where(UserSession.token == token)).first()
         if not user_session:
             raise HTTPException(status_code=401, detail="Session not found")
-        #avoid timezone issues
-        expires_at_checked = user_session.expires_at
-        if expires_at_checked.tzinfo is None:
-            expires_at_checked = expires_at_checked.replace(tzinfo=timezone.utc)
-        
-        if expires_at_checked < datetime.now(timezone.utc):
+
+        expires_at_checked = coerce_epoch_seconds(user_session.expires_at)
+        if expires_at_checked is None:
+            raise HTTPException(status_code=401, detail="Session invalid")
+
+        if expires_at_checked < int(time.time()):
             raise HTTPException(status_code=401, detail="Session expired")
+
+        if user_session.expires_at != expires_at_checked:
+            user_session.expires_at = expires_at_checked
+            session.add(user_session)
+            session.commit()
+
         return user_session
     except HTTPException:
         raise

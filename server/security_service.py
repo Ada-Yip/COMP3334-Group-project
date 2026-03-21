@@ -2,21 +2,20 @@
 login/ registration/ authentication
 """
 from sqlmodel import Session, select
-from datetime import datetime
 from .database import UserSession, User, get_session
 from fastapi import Depends, HTTPException, Header
 from .database import (
-    get_valid_user_by_id, 
+    get_valid_user_by_id,
     get_valid_session_from_db,
     refresh_user_session,
-    compute_session_expires_at,
-    UserSession
-    )
+    compute_session_expires_at
+)
 from config import TOKEN_TTL_SECONDS
 import bcrypt
 import secrets
 
 import logging
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
@@ -31,6 +30,7 @@ def hash_password(plain_password: str) -> str:
         logger.exception("Error hashing password")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """verify password using bcrypt"""
     if not plain_password or not hashed_password:
@@ -41,9 +41,10 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
         logger.exception("Invalid hashed password format during verification")
         return False
 
+
 def get_current_user(
-    authorization: str = Header(None),
-    session: Session = Depends(get_session)
+        authorization: str = Header(None),
+        session: Session = Depends(get_session)
 ) -> User:
     """get current user from database, and refresh session expiry (sliding)."""
     try:
@@ -66,6 +67,7 @@ def get_current_user(
     except Exception as e:
         logger.exception("Error getting current user")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
+
 
 def create_user_session(user_id: int, session: Session) -> str:
     """create user session and return random token"""

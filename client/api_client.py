@@ -40,7 +40,7 @@ class ClientAPI:
 
     def get_public_key(self, user_id: int) -> dict:
         """get public key from server"""
-        return _request_json("GET", f"{self.base_url}/users/{user_id}/public_key", token = self.state.session_token)
+        return _request_json("GET", f"{self.base_url}/users/{user_id}/public_key", token=self.state.session_token)
 
     def get_user_name(self) -> str:
         """get user name from server"""
@@ -100,11 +100,12 @@ class ClientAPI:
             "plaintext": plaintext,
             "ciphertext": encrypted_text,
             "nonce": actual_nonce,
-        }, token = self.state.session_token)
+        }, token=self.state.session_token)
 
     def fetch_messages_all(self) -> dict:
         """fetch all messages from server"""
-        msg_response = _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=false", token = self.state.session_token)
+        msg_response = _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=false",
+                                     token=self.state.session_token)
         if msg_response.get("status_code") == 200:
             data_payload = msg_response.get("data") or {}
             self.show_messages(data_payload)
@@ -112,12 +113,12 @@ class ClientAPI:
 
     def fetch_messages_unseen(self) -> dict:
         """fetch only unseen messages from server"""
-        msg_response = _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=true", token = self.state.session_token)
+        msg_response = _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=true",
+                                     token=self.state.session_token)
         if msg_response.get("status_code") == 200:
             data_payload = msg_response.get("data") or {}
             self.show_messages(data_payload)
         return msg_response
-
 
     def show_messages(self, data_payload: dict) -> None:
         """
@@ -156,10 +157,10 @@ class ClientAPI:
 
 
 def _request_json(
-    method: str, 
-    url: str, 
-    payload: dict | None = None, 
-    token: str | None = None
+        method: str,
+        url: str,
+        payload: dict | None = None,
+        token: str | None = None
 ) -> dict:
     """
     Send an HTTP request and parse JSON response to dictionary
