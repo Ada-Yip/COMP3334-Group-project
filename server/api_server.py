@@ -12,7 +12,7 @@ from .database import (
     get_valid_user_by_id,
     get_valid_user_by_username,
     check_password,
-    get_valid_session_from_db
+    get_valid_session_from_db, remove_expired_messages,
 )
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -175,6 +175,7 @@ class SendMsgReq(BaseModel):
     receiver_username: str
     ciphertext: str
     nonce: str
+    age: int
 
 
 @app.post("/messages/send")
@@ -194,6 +195,7 @@ def send_message(
             ciphertext=req.ciphertext,
             nonce=req.nonce,
             timestamp=int(time.time()),
+            age=req.age,
             )
         session.add(msg)
         session.commit()
@@ -237,11 +239,13 @@ def fetch_messages(
                 "ciphertext": m.ciphertext,
                 "nonce": m.nonce,
                 "timestamp": m.timestamp,
+                "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
             }
             for m in unseen_msgs
         ]
 
         if unseen_only:
+            remove_expired_messages(session)
             session.commit()
             return {
                 "data": {
@@ -262,10 +266,12 @@ def fetch_messages(
                 "ciphertext": m.ciphertext,
                 "nonce": m.nonce,
                 "timestamp": m.timestamp,
+                "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
             }
             for m in msgs_all
         ]
 
+        remove_expired_messages(session)
         session.commit()
         return {
             "data": {
@@ -273,6 +279,7 @@ def fetch_messages(
                 "unseen_count": unseen_messages_count,
             }
         }
+
     except HTTPException:
         raise
     except Exception as e:

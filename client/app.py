@@ -102,7 +102,13 @@ def main():
                 continue
 
             message = input("Enter the message to send: ")
-            res = client_obj.send_message(recipient_username, message)
+            while True:
+                try:
+                    duration = int(input("Enter expiry time (in seconds) for the message (0 = always valid): "))
+                    break
+                except ValueError:
+                    print("Invalid input! Please enter a valid integer.")
+            res = client_obj.send_message(recipient_username, message, duration)
             print_message_from_response(res)
 
         elif action == '2':

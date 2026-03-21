@@ -94,6 +94,7 @@ class Message(SQLModel, table=True):
     nonce: str
     timestamp: int = Field(default_factory=lambda: int(time.time()))
     is_delivered: bool = Field(default=False)
+    age: int
 
 
 #======= User Session Utilities =======
@@ -227,3 +228,30 @@ def check_password(password: str):
     if len(password) < 8:
         return False
     return True
+
+def get_expired_messages(session: Session) -> list[Message]:
+    """get expired messages from database"""
+    try:
+        current_time = int(time.time())
+        expired_msgs = session.exec(
+            select(Message).where(
+                Message.timestamp + Message.age < current_time
+            )
+        ).all()
+        return expired_msgs
+    except Exception as e:
+        logger.exception("Error getting expired messages")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
+
+def remove_expired_messages(session: Session) -> None:
+    """remove expired messages from database"""
+    try:
+        expired_msgs = get_expired_messages(session)
+        for msg in expired_msgs:
+            session.delete(msg)
+        session.commit()
+        logger.info(f"Expired messages removed successfully, count: {len(expired_msgs)}")
+    except Exception as e:
+        session.rollback()
+        logger.exception("Error removing expired messages")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")

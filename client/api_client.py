@@ -91,6 +91,7 @@ class ClientAPI:
             self,
             receiver_username: str,
             plaintext: str,
+            age: int,
     ) -> dict:
         """send message to server"""
         encrypted_text, actual_nonce = self.crypto_manager.encrypt(plaintext)
@@ -98,6 +99,7 @@ class ClientAPI:
             "receiver_username": receiver_username,
             "ciphertext": encrypted_text,
             "nonce": actual_nonce,
+            "age": age,
         }, token=self.state.session_token)
 
     def fetch_messages_all(self) -> dict:
@@ -139,14 +141,19 @@ class ClientAPI:
             ciphertext = message.get('ciphertext')
             nonce = message.get('nonce')
             timestamp = message.get('timestamp')
+            age = message.get('age')        #remaining age
 
             print(f"From: {sender}")
             print(f"To: {receiver}")
             try:
-                if ciphertext and nonce:
+                if age < 0:
+                    print(f"Message: [Expired Message]")
+                    print(f"Sent at {timestamp}, expired {abs(age)} seconds ago")
+                elif ciphertext and nonce:
                     plaintext = self.crypto_manager.decrypt(ciphertext, nonce)
                     print(f"Message: {plaintext}")
                     print(f"Sent at {timestamp}")
+                    print(f"Expires in {age} seconds" if age > 0 else "")
                 else:
                     print(f"Message: [Error] Missing ciphertext or nonce")
             except Exception as e:
