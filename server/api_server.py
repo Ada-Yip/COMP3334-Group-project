@@ -236,7 +236,7 @@ def fetch_messages(
             {
                 "sender_username": m.sender_username_db,
                 "receiver_username": m.receiver_username_db,
-                "ciphertext": m.ciphertext,
+                "ciphertext": m.ciphertext if m.age == 0 or m.age - (int(time.time()) - m.timestamp) >= 0 else "0",
                 "nonce": m.nonce,
                 "timestamp": m.timestamp,
                 "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
@@ -263,7 +263,7 @@ def fetch_messages(
             {
                 "sender_username": m.sender_username_db,
                 "receiver_username": m.receiver_username_db,
-                "ciphertext": m.ciphertext,
+                "ciphertext": m.ciphertext if m.age == 0 or m.age - (int(time.time()) - m.timestamp) >= 0 else "0",
                 "nonce": m.nonce,
                 "timestamp": m.timestamp,
                 "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
