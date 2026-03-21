@@ -57,7 +57,7 @@ recipient comes online.
 Delivery indicators are common IM usability features but can leak metadata. Under the HbC 
 server model, you may rely on the server to behave correctly, but you must define the semantics 
 precisely and discuss metadata exposure. 
-- [ ] All Finished
+- [x] All Finished
 requirements:
 - [x] (R17) Minimum delivery states: @Sam
 • Sent: client successfully submitted the message to the server. 
