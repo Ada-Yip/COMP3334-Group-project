@@ -93,11 +93,9 @@ class ClientAPI:
             plaintext: str,
     ) -> dict:
         """send message to server"""
-        #TODO: add a date time to it
         encrypted_text, actual_nonce = self.crypto_manager.encrypt(plaintext)
         return _request_json("POST", f"{self.base_url}/messages/send", {
             "receiver_username": receiver_username,
-            "plaintext": plaintext,
             "ciphertext": encrypted_text,
             "nonce": actual_nonce,
         }, token=self.state.session_token)
@@ -140,6 +138,7 @@ class ClientAPI:
             receiver = message.get('receiver_username')
             ciphertext = message.get('ciphertext')
             nonce = message.get('nonce')
+            timestamp = message.get('timestamp')
 
             print(f"From: {sender}")
             print(f"To: {receiver}")
@@ -147,6 +146,7 @@ class ClientAPI:
                 if ciphertext and nonce:
                     plaintext = self.crypto_manager.decrypt(ciphertext, nonce)
                     print(f"Message: {plaintext}")
+                    print(f"Sent at {timestamp}")
                 else:
                     print(f"Message: [Error] Missing ciphertext or nonce")
             except Exception as e:

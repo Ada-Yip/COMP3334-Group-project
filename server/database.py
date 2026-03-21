@@ -92,6 +92,7 @@ class Message(SQLModel, table=True):
     receiver_username_db: str
     ciphertext: str
     nonce: str
+    timestamp: int = Field(default_factory=lambda: int(time.time()))
     is_delivered: bool = Field(default=False)
 
 

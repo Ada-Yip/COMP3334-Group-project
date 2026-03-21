@@ -23,6 +23,7 @@ from .security_service import (
     create_user_session,
     )
 import logging
+import time
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -191,7 +192,8 @@ def send_message(
             sender_id=user.user_id, sender_username_db=user.username_db,
             receiver_id=receiver.user_id, receiver_username_db=receiver.username_db,
             ciphertext=req.ciphertext,
-            nonce=req.nonce
+            nonce=req.nonce,
+            timestamp=int(time.time()),
             )
         session.add(msg)
         session.commit()
@@ -234,6 +236,7 @@ def fetch_messages(
                 "receiver_username": m.receiver_username_db,
                 "ciphertext": m.ciphertext,
                 "nonce": m.nonce,
+                "timestamp": m.timestamp,
             }
             for m in unseen_msgs
         ]
@@ -258,6 +261,7 @@ def fetch_messages(
                 "receiver_username": m.receiver_username_db,
                 "ciphertext": m.ciphertext,
                 "nonce": m.nonce,
+                "timestamp": m.timestamp,
             }
             for m in msgs_all
         ]
