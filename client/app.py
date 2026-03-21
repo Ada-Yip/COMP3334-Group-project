@@ -104,9 +104,9 @@ def main():
             message = input("Enter the message to send: ")
             while True:
                 try:
-                    duration = int(input("Enter expiry time (in seconds) for the message (0 = always valid): "))
+                    duration = abs(int(input("Enter expiry time (in seconds) for the message (0 = always valid): ")))
                     break
-                except ValueError:
+                except Exception:
                     print("Invalid input! Please enter a valid integer.")
             res = client_obj.send_message(recipient_username, message, duration)
             print_message_from_response(res)

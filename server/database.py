@@ -235,7 +235,7 @@ def get_expired_messages(session: Session) -> list[Message]:
         current_time = int(time.time())
         expired_msgs = session.exec(
             select(Message).where(
-                Message.timestamp + Message.age < current_time
+                (Message.age > 0) & (Message.timestamp + Message.age < current_time)
             )
         ).all()
         return expired_msgs
