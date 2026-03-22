@@ -4,17 +4,9 @@ from __future__ import annotations
 
 import json
 import secrets
-import time
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-@dataclass
-class Conversation:
-    """represents a conversation with a contact"""
-    sender_username: str
-    last_timestamp: int
-    unread_count: int
-    message_list: list = field(default_factory=list)
 from urllib import error, request
+from datetime import datetime
 from config import SERVER_URL, SHARED_SECRET
 from crypto_manager import CryptoManager
 
@@ -32,66 +24,6 @@ class ClientState:
 
 
 class ClientAPI:
-    def _calc_time_ago(self, timestamp: int) -> str:
-        """convert unix timestamp to human-readable 'time ago' format"""
-        now = int(time.time())
-        diff = now - timestamp
-        if diff < 60:
-            return "just now"
-        elif diff < 3600:
-            mins = diff // 60
-            return f"{mins}m ago" if mins > 1 else "1m ago"
-        elif diff < 86400:
-            hours = diff // 3600
-            return f"{hours}h ago" if hours > 1 else "1h ago"
-        else:
-            dt = datetime.fromtimestamp(timestamp)
-            today = datetime.now()
-            if dt.date() == today.date():
-                return f"Today {dt.strftime('%H:%M')}"
-            elif (today - timedelta(days=1)).date() == dt.date():
-                return f"Yesterday {dt.strftime('%H:%M')}"
-            else:
-                return dt.strftime("%b %d")
-
-    def _group_messages_by_sender(self, messages: list) -> list:
-        """group messages by sender, return list of Conversation objects sorted by most recent"""
-        conversations = {}
-        for msg in messages:
-            sender = msg.get('sender_username')
-            if sender not in conversations:
-                conversations[sender] = Conversation(
-                    sender_username=sender,
-                    last_timestamp=msg.get('timestamp', 0),
-                    unread_count=0,
-                    message_list=[]
-                )
-            conversations[sender].message_list.append(msg)
-            if msg.get('timestamp', 0) > conversations[sender].last_timestamp:
-                conversations[sender].last_timestamp = msg.get('timestamp', 0)
-        sorted_convs = sorted(
-            conversations.values(),
-            key=lambda c: c.last_timestamp,
-            reverse=True
-        )
-        return sorted_convs
-
-    def get_conversations_list(self) -> list:
-        """fetch all messages and return grouped conversations sorted by most recent"""
-        msg_response = _request_json(
-            "POST", 
-            f"{self.base_url}/messages/fetch?unseen_only=false&offset=0&limit=10000",
-            token=self.state.session_token
-        )
-        if msg_response.get("status_code") == 200:
-            data_payload = msg_response.get("data") or {}
-            messages = data_payload.get("messages") or []
-            conversations = self._group_messages_by_sender(messages)
-            for conv in conversations:
-                unread = sum(1 for m in conv.message_list if m.get('age', 0) >= 0 and not m.get('is_delivered', True))
-                conv.unread_count = unread
-            return conversations
-        return []
     """
     API wrapper that owns client session state.
     """
@@ -156,6 +88,86 @@ class ClientAPI:
             print("You have been logged out successfully")
         return response
 
+    ### JJ friend ###
+    def send_friend_request(self, to_username: str) -> dict:
+        """Send a friend request to another user."""
+        return _request_json(
+            "POST",
+            f"{self.base_url}/friend-requests/send",
+            {"to_username": to_username},
+            token=self.state.session_token
+        )
+    
+    def accept_friend_request(self, request_id: int) -> dict:
+        """Accept a pending friend request."""
+        return _request_json(
+            "POST",
+            f"{self.base_url}/friend-requests/accept",
+            {"request_id": request_id},
+            token=self.state.session_token
+        )
+    
+    def decline_friend_request(self, request_id: int) -> dict:
+        """Decline a pending friend request."""
+        return _request_json(
+            "POST",
+            f"{self.base_url}/friend-requests/decline",
+            {"request_id": request_id},
+            token=self.state.session_token
+        )
+    
+    def get_received_requests(self) -> dict:
+        """Get all pending friend requests received by current user."""
+        return _request_json(
+            "GET",
+            f"{self.base_url}/friend-requests/received",
+            token=self.state.session_token
+        )
+
+    def get_sent_requests(self) -> dict:
+        """Get all pending friend requests sent by current user."""
+        return _request_json(
+            "GET",
+            f"{self.base_url}/friend-requests/sent",
+            token=self.state.session_token
+        )
+
+    def get_friends(self) -> dict:
+        """Get list of accepted friends."""
+        return _request_json(
+            "GET",
+            f"{self.base_url}/friends",
+            token=self.state.session_token
+        )
+
+    def remove_friend(self, friend_username: str) -> dict:
+        """Remove an existing friend."""
+        return _request_json(
+            "POST",
+            f"{self.base_url}/friends/remove",
+            {"friend_username": friend_username},
+            token=self.state.session_token
+        )
+
+    def block_user(self, block_username: str) -> dict:
+        """Block another user."""
+        return _request_json(
+            "POST",
+            f"{self.base_url}/users/block",
+            {"block_username": block_username},
+            token=self.state.session_token
+        )
+
+    def unblock_user(self, block_username: str) -> dict:
+        """Unblock a previously blocked user."""
+        return _request_json(
+            "POST",
+            f"{self.base_url}/users/unblock",
+            {"block_username": block_username},
+            token=self.state.session_token
+        )
+    ### JJ friend end ###
+
     def send_message(
             self,
             receiver_username: str,
@@ -215,13 +227,14 @@ class ClientAPI:
             print(f"From: {sender}")
             print(f"To: {receiver}")
             try:
+                sent_time = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
                 if age < 0:
                     print(f"Message: [Expired Message]")
-                    print(f"Sent at {timestamp}, expired {abs(age)} seconds ago")
+                    print(f"Sent at {sent_time}, expired {abs(age)} seconds ago")
                 elif ciphertext and nonce:
                     plaintext = self.crypto_manager.decrypt(ciphertext, nonce)
                     print(f"Message: {plaintext}")
-                    print(f"Sent at {timestamp}")
+                    print(f"Sent at {sent_time}")
                     print(f"Expires in {age} seconds" if age > 0 else "")
                 else:
                     print(f"Message: [Error] Missing ciphertext or nonce")

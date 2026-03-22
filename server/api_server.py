@@ -1,12 +1,14 @@
 """
 api and enter point
 """
-
+from datetime import datetime, timezone #JJ
 from fastapi import FastAPI, Depends, HTTPException, Header
 from sqlmodel import Session, select
 from .database import (
     User,
     Message,
+    FriendRequest,  #JJ
+    BlockedUser,     #JJ
     init_db,
     get_session,
     get_valid_user_by_id,
@@ -178,7 +180,7 @@ class SendMsgReq(BaseModel):
     age: int
 
 
-@app.post("/messages/send")
+@app.post("/messages/send")      ### JJ added frd/block check ###
 def send_message(
         req: SendMsgReq,
         user: User = Depends(get_current_user),
@@ -189,6 +191,30 @@ def send_message(
         #check if receiver exists
         receiver = req.receiver_username.strip()
         receiver = get_valid_user_by_username(username=receiver, session=session)
+        
+        # ========== FRIEND AND BLOCK CHECKS ==========
+        # Check if receiver has blocked the sender
+        block_check = session.exec(
+            select(BlockedUser).where(
+                BlockedUser.user_id == receiver.user_id,
+                BlockedUser.blocked_user_id == user.user_id
+            )
+        ).first()
+        if block_check:
+            raise HTTPException(status_code=403, detail="You are blocked by this user")
+        
+        # Check if sender and receiver are friends (accepted request)
+        friend_check = session.exec(
+            select(FriendRequest).where(
+                ((FriendRequest.from_user_id == user.user_id) & (FriendRequest.to_user_id == receiver.user_id)) |
+                ((FriendRequest.from_user_id == receiver.user_id) & (FriendRequest.to_user_id == user.user_id)),
+                FriendRequest.status == "accepted"
+            )
+        ).first()
+        if not friend_check:
+            raise HTTPException(status_code=403, detail="You are not friends with this user")
+        # ========== END CHECKS ==========
+        
         msg = Message(
             sender_id=user.user_id, sender_username_db=user.username_db,
             receiver_id=receiver.user_id, receiver_username_db=receiver.username_db,
@@ -208,19 +234,15 @@ def send_message(
         logger.exception("Error sending message")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-
 @app.post("/messages/fetch")
 def fetch_messages(
         unseen_only: bool = False,
-        offset: int = 0,
-        limit: int = 10000,
         user: User = Depends(get_current_user),
         session: Session = Depends(get_session),        
 ):
     """
     Current user fetch messages from database.
     If unseen_only is True, only fetch unseen messages.
-    Supports pagination with offset and limit parameters.
     """
     try:
         #=========unseen_only=true=========
@@ -243,7 +265,6 @@ def fetch_messages(
                 "nonce": m.nonce,
                 "timestamp": m.timestamp,
                 "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
-                "is_delivered": m.is_delivered,
             }
             for m in unseen_msgs
         ]
@@ -271,23 +292,16 @@ def fetch_messages(
                 "nonce": m.nonce,
                 "timestamp": m.timestamp,
                 "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
-                "is_delivered": m.is_delivered,
             }
             for m in msgs_all
         ]
-
-        # Apply offset and limit for pagination
-        paginated_messages = messages_list_all[offset:offset + limit]
 
         remove_expired_messages(session)
         session.commit()
         return {
             "data": {
-                "messages": paginated_messages,
+                "messages": messages_list_all,
                 "unseen_count": unseen_messages_count,
-                "total_count": len(messages_list_all),
-                "offset": offset,
-                "limit": limit,
             }
         }
 
@@ -297,3 +311,261 @@ def fetch_messages(
         session.rollback()
         logger.exception("Error fetching messages")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
+
+# JJ friend
+class FriendRequestReq(BaseModel):
+    to_username: str
+
+class FriendRequestActionReq(BaseModel):
+    request_id: int
+
+class RemoveFriendReq(BaseModel):
+    friend_username: str
+
+class BlockUserReq(BaseModel):
+    block_username: str
+
+############ JJ Send friend request ################
+@app.post("/friend-requests/send")
+def send_friend_request(
+    req: FriendRequestReq,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Send a friend request to another user."""
+    # Find target user
+    target = get_valid_user_by_username(req.to_username.strip(), session)
+    if target.user_id == current_user.user_id:
+        raise HTTPException(status_code=400, detail="Cannot send friend request to yourself")
+    
+    # Check if already friends (accepted request)
+    existing = session.exec(
+        select(FriendRequest).where(
+            ((FriendRequest.from_user_id == current_user.user_id) & (FriendRequest.to_user_id == target.user_id)) |
+            ((FriendRequest.from_user_id == target.user_id) & (FriendRequest.to_user_id == current_user.user_id))
+        )
+    ).first()
+    if existing:
+        if existing.status == "accepted":
+            raise HTTPException(status_code=400, detail="Already friends")
+        elif existing.status == "pending":
+            raise HTTPException(status_code=400, detail="Friend request already pending")
+    
+    # Check if blocked
+    block_check = session.exec(
+        select(BlockedUser).where(
+            (BlockedUser.user_id == target.user_id) & (BlockedUser.blocked_user_id == current_user.user_id)
+        )
+    ).first()
+    if block_check:
+        raise HTTPException(status_code=403, detail="You are blocked by this user")
+    
+    # Create request
+    new_req = FriendRequest(
+        from_user_id=current_user.user_id,
+        to_user_id=target.user_id,
+        status="pending"
+    )
+    session.add(new_req)
+    session.commit()
+    return {"message": "Friend request sent"}
+
+############ JJ Accept friend request ################
+@app.post("/friend-requests/accept")
+def accept_friend_request(
+    req: FriendRequestActionReq,   ###
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Accept a pending friend request."""
+    friend_req = session.get(FriendRequest, req.request_id)
+    if not friend_req:
+        raise HTTPException(status_code=404, detail="Friend request not found")
+    if friend_req.to_user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to accept this request")
+    if friend_req.status != "pending":
+        raise HTTPException(status_code=400, detail="Request already processed")
+    
+    friend_req.status = "accepted"
+    friend_req.updated_at = int(time.time())
+    session.add(friend_req)
+    session.commit()
+    return {"message": "Friend request accepted"}
+
+############ JJ Decline friend request ################
+@app.post("/friend-requests/decline")
+def decline_friend_request(
+    req: FriendRequestActionReq,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Decline a pending friend request."""
+    friend_req = session.get(FriendRequest, req.request_id)
+    if not friend_req:
+        raise HTTPException(status_code=404, detail="Friend request not found")
+    if friend_req.to_user_id != current_user.user_id:
+        raise HTTPException(status_code=403, detail="Not authorized to decline this request")
+    if friend_req.status != "pending":
+        raise HTTPException(status_code=400, detail="Request already processed")
+    
+    # Optionally delete or set to declined
+    session.delete(friend_req)   # or set status="declined"
+    session.commit()
+    return {"message": "Friend request declined"}
+
+############ JJ List recieved friend request ################
+@app.get("/friend-requests/received")
+def get_received_requests(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """List pending friend requests sent to current user."""
+    requests = session.exec(
+        select(FriendRequest).where(
+            FriendRequest.to_user_id == current_user.user_id,
+            FriendRequest.status == "pending"
+        )
+    ).all()
+    
+    result = []
+    for r in requests:
+        from_user = session.exec(select(User).where(User.user_id == r.from_user_id)).first()
+        if from_user:
+            result.append({
+                "id": r.id,
+                "from_username": from_user.username_db,
+                "created_at": r.created_at  ###
+            })
+    
+    return {"requests": result}
+
+############ JJ List sent friend request ################
+@app.get("/friend-requests/sent")
+def get_sent_requests(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """List pending friend requests sent by current user."""
+    requests = session.exec(
+        select(FriendRequest).where(
+            FriendRequest.from_user_id == current_user.user_id,
+            FriendRequest.status == "pending"
+        )
+    ).all()
+    
+    result = []
+    for r in requests:
+        to_user = session.exec(select(User).where(User.user_id == r.to_user_id)).first()
+        if to_user:
+            result.append({
+                "id": r.id,
+                "to_username": to_user.username_db,
+                "created_at": r.created_at.isoformat()
+            })
+    
+    return {"requests": result}
+
+############ JJ List friend accepeted ################
+@app.get("/friends")
+def get_friends(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """List all accepted friends."""
+    # Get all accepted requests where current_user is either sender or receiver
+    friends = session.exec(
+        select(FriendRequest).where(
+            ((FriendRequest.from_user_id == current_user.user_id) | (FriendRequest.to_user_id == current_user.user_id)),
+            FriendRequest.status == "accepted"
+        )
+    ).all()
+    result = []
+    for r in friends:
+        friend_id = r.to_user_id if r.from_user_id == current_user.user_id else r.from_user_id
+        friend = session.get(User, friend_id)
+        result.append({
+            "user_id": friend.user_id,
+            "username": friend.username_db
+        })
+    return {"friends": result}
+
+############ JJ Remove friend  ################
+@app.post("/friends/remove")
+def remove_friend(
+    req: RemoveFriendReq,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Remove an existing friend (delete the accepted friend request)."""
+    target = get_valid_user_by_username(req.friend_username.strip(), session)
+    friend_req = session.exec(
+        select(FriendRequest).where(
+            ((FriendRequest.from_user_id == current_user.user_id) & (FriendRequest.to_user_id == target.user_id)) |
+            ((FriendRequest.from_user_id == target.user_id) & (FriendRequest.to_user_id == current_user.user_id)),
+            FriendRequest.status == "accepted"
+        )
+    ).first()
+    if not friend_req:
+        raise HTTPException(status_code=404, detail="Friend not found")
+    session.delete(friend_req)
+    session.commit()
+    return {"message": "Friend removed"}
+
+############ JJ Block user  ################
+@app.post("/users/block")
+def block_user(
+    req: BlockUserReq,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Block another user."""
+    target = get_valid_user_by_username(req.block_username.strip(), session)
+    if target.user_id == current_user.user_id:
+        raise HTTPException(status_code=400, detail="Cannot block yourself")
+    
+    # Check if already blocked
+    existing = session.exec(
+        select(BlockedUser).where(
+            BlockedUser.user_id == current_user.user_id,
+            BlockedUser.blocked_user_id == target.user_id
+        )
+    ).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="User already blocked")
+    
+    # Remove any pending friend requests between the two
+    reqs = session.exec(
+        select(FriendRequest).where(
+            ((FriendRequest.from_user_id == current_user.user_id) & (FriendRequest.to_user_id == target.user_id)) |
+            ((FriendRequest.from_user_id == target.user_id) & (FriendRequest.to_user_id == current_user.user_id))
+        )
+    ).all()
+    for r in reqs:
+        session.delete(r)
+    
+    # Add block
+    block = BlockedUser(user_id=current_user.user_id, blocked_user_id=target.user_id)
+    session.add(block)
+    session.commit()
+    return {"message": "User blocked"}
+
+############ JJ Unblock user  ################
+@app.post("/users/unblock")
+def unblock_user(
+    req: BlockUserReq,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Unblock a previously blocked user."""
+    target = get_valid_user_by_username(req.block_username.strip(), session)
+    block = session.exec(
+        select(BlockedUser).where(
+            BlockedUser.user_id == current_user.user_id,
+            BlockedUser.blocked_user_id == target.user_id
+        )
+    ).first()
+    if not block:
+        raise HTTPException(status_code=404, detail="User not blocked")
+    session.delete(block)
+    session.commit()
+    return {"message": "User unblocked"}
