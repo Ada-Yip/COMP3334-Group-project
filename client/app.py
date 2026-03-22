@@ -4,6 +4,7 @@ UI for client
 import sys
 import os
 import time
+from datetime import datetime
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import SERVER_URL, SHARED_SECRET
@@ -25,6 +26,119 @@ def normalize_choice(user_input: str) -> str:
     """Normalize command-style input."""
     return user_input.strip().lower()
 
+##### JJ #####
+def friend_management_menu(client_obj: ClientAPI):
+    """Submenu for friend-related operations."""
+    while True:
+        print("\n=========== Friend Management ===========")
+        print("1) Send friend request")
+        print("2) View received friend requests")
+        print("3) View sent friend requests")
+        print("4) List friends")
+        print("5) Remove friend")
+        print("6) Block a user")
+        print("7) Unblock a user")
+        print("8) Back to main menu")
+        
+        choice = normalize_choice(input("Choose 1-8: "))
+        
+        if choice == '1':
+            # Send friend request
+            to_username = input("Enter username to send friend request: ").strip()
+            if to_username == client_obj.get_user_name():
+                print("You cannot send a friend request to yourself!")
+                continue
+            res = client_obj.send_friend_request(to_username)
+            print_message_from_response(res)
+        
+        elif choice == '2':
+            # View received requests
+            res = client_obj.get_received_requests()
+            if res.get("status_code") == 200:
+                requests = res.get("requests", [])
+                if not requests:
+                    print("No pending friend requests received.")
+                else:
+                    print("\n--- Received Friend Requests ---")
+                    for req in requests:      ###
+                        local_time = datetime.fromtimestamp(req['created_at'])
+                        print(f"ID: {req['id']} | From: {req['from_username']} | Sent: {local_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                    
+                    action = input("\nEnter request ID to accept/decline (or 'q' to go back): ").strip()
+                    if action != 'q':
+                        try:
+                            req_id = int(action)
+                            accept_decline = normalize_choice(input("Accept (a) or decline (d)? "))
+                            if accept_decline == 'a':
+                                res2 = client_obj.accept_friend_request(req_id)
+                                print_message_from_response(res2)
+                            elif accept_decline == 'd':
+                                res2 = client_obj.decline_friend_request(req_id)
+                                print_message_from_response(res2)
+                            else:
+                                print("Invalid choice")
+                        except ValueError:
+                            print("Invalid request ID")
+            else:
+                print_message_from_response(res)
+        
+        elif choice == '3':
+            # View sent requests
+            res = client_obj.get_sent_requests()
+            if res.get("status_code") == 200:
+                requests = res.get("requests", [])
+                if not requests:
+                    print("No pending friend requests sent.")
+                else:
+                    print("\n--- Sent Friend Requests ---")
+                    for req in requests:       ###
+                        local_time = datetime.fromtimestamp(req['created_at'])
+                        print(f"ID: {req['id']} | To: {req['to_username']} | Sent: {local_time.strftime('%Y-%m-%d %H:%M:%S')}")
+            else:
+                print_message_from_response(res)
+        
+        elif choice == '4':
+            # List friends
+            res = client_obj.get_friends()
+            if res.get("status_code") == 200:
+                friends = res.get("friends", [])
+                if not friends:
+                    print("You don't have any friends yet.")
+                else:
+                    print(f"\n--- Friends List (Total: {len(friends)}) ---")
+                    for friend in friends:
+                        print(f"- {friend['username']}")
+            else:
+                print_message_from_response(res)
+        
+        elif choice == '5':
+            # Remove friend
+            friend_to_remove = input("Enter username to remove from friends: ").strip()
+            res = client_obj.remove_friend(friend_to_remove)
+            print_message_from_response(res)
+        
+        elif choice == '6':
+            # Block a user
+            to_block = input("Enter username to block: ").strip()
+            if to_block == client_obj.get_user_name():
+                print("You cannot block yourself!")
+            else:
+                res = client_obj.block_user(to_block)
+                print_message_from_response(res)
+        
+        elif choice == '7':
+            # Unblock a user
+            to_unblock = input("Enter username to unblock: ").strip()
+            res = client_obj.unblock_user(to_unblock)
+            print_message_from_response(res)
+        
+        elif choice == '8':
+            break
+        
+        else:
+            print("Invalid choice. Please enter 1-8.")
+##### End of JJ #####
+
 
 def main():
 
@@ -38,7 +152,7 @@ def main():
             while True:
                 print("============Login============\n")
                 input_username = input("Enter your username: ")
-                if input_username == "exit":
+                if input_username == "exit":  # Add Magic Word to exit the application at any point during login/registration
                     print("Returning to login/registration choice.")
                     break
                 input_password = input("Enter your password: ")
@@ -84,93 +198,12 @@ def main():
         else:
             print("Invalid choice. Please enter 'y' or 'n'.")
 
-    def view_messages(client_obj):
-        """
-        View messages with conversation list, unread counters, and pagination
-        """
-        while True:
-            print("\n===========Conversation List===========\n")
-            conversations = client_obj.get_conversations_list()
-            if not conversations:
-                print("No conversations yet.\n")
-                return
-            for idx, conv in enumerate(conversations, 1):
-                time_ago = client_obj._calc_time_ago(conv.last_timestamp)
-                if conv.unread_count > 0:
-                    print(f"[{idx}] {conv.sender_username} -  Last: {time_ago} ({conv.unread_count} unread)")
-                else:
-                    print(f"[{idx}] {conv.sender_username} -  Last: {time_ago}")
-            print(f"\n[0] Back to main menu")
-            print("--------------------------------")
-            try:
-                choice = input("Select conversation (number): ").strip()
-                if choice == '0':
-                    return
-                choice_idx = int(choice) - 1
-                if choice_idx < 0 or choice_idx >= len(conversations):
-                    print("Invalid choice. Please try again.")
-                    continue
-                selected_conv = conversations[choice_idx]
-                sender = selected_conv.sender_username
-                offset = 0
-                limit = 10
-                all_messages = selected_conv.message_list
-                all_messages.sort(key=lambda m: m.get('timestamp', 0), reverse=True)
-                while True:
-                    print(f"\n===========Messages from {sender}===========\n")
-                    paginated = all_messages[offset:offset + limit]
-                    if not paginated:
-                        print("No more messages.\n")
-                        break
-                    print(f"Showing messages {offset + 1} to {offset + len(paginated)} of {len(all_messages)}")
-                    print("--------------------------------\n")
-                    for message in paginated:
-                        sender_name = message.get('sender_username')
-                        receiver_name = message.get('receiver_username')
-                        ciphertext = message.get('ciphertext')
-                        nonce = message.get('nonce')
-                        timestamp = message.get('timestamp')
-                        age = message.get('age')
-                        print(f"From: {sender_name}")
-                        print(f"To: {receiver_name}")
-                        try:
-                            if age < 0:
-                                print(f"Message: [Expired Message]")
-                                print(f"Sent at {timestamp}, expired {abs(age)} seconds ago")
-                            elif ciphertext and nonce and ciphertext != "0":
-                                plaintext = client_obj.crypto_manager.decrypt(ciphertext, nonce)
-                                print(f"Message: {plaintext}")
-                                print(f"Sent at {timestamp}")
-                                if age > 0:
-                                    print(f"Expires in {age} seconds")
-                                else:
-                                    print(f"Message never expires")
-                            else:
-                                print(f"Message: [Error] Missing ciphertext or nonce")
-                        except Exception as e:
-                            print(f"Message: [Decryption Failed - Data corrupted or wrong key]")
-                        print("--------------------------------\n")
-                    if offset + limit < len(all_messages):
-                        user_input = input("Press [Enter] to continue loading messages, or [0] to go back: ").strip()
-                        if user_input == '0':
-                            break
-                        offset += limit
-                    else:
-                        print("No more messages.\n")
-                        input("Press [Enter] to go back to conversations: ")
-                        break
-            except ValueError:
-                print("Invalid input. Please enter a number.")
-                continue
-            except Exception as e:
-                print(f"Error: {e}")
-                continue
 
     while True:
         print("\n===========What would you like to do?===========")
         print("1) Send a message")
         print("2) Fetch messages")
-        print("3) View messages")
+        print("3) Friend management")
         print("4) Logout and exit")
         print("5) Exit without logout")
 
@@ -205,19 +238,20 @@ def main():
             print_message_from_response(res)
 
         elif action == '3':
-            view_messages(client_obj)
+            # Friend management submenu
+            friend_management_menu(client_obj)
 
         elif action == '4':
             res = client_obj.logout()
             print_message_from_response(res)
             return
-
+        
         elif action == '5':
             print("Exit without logout selected.")
             return
 
         else:
-            print("Invalid choice. Please enter 1, 2, 3, 4, or 5.")
+            print("Invalid choice. Please enter 1, 2, 3, 4 or 5.")
 
 
 if __name__ == "__main__":
