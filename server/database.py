@@ -11,6 +11,7 @@ from fastapi import HTTPException, Depends
 from sqlmodel import select
 import time
 from sqlalchemy import text
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -94,8 +95,22 @@ class Message(SQLModel, table=True):
     nonce: str
     timestamp: int = Field(default_factory=lambda: int(time.time()))
     is_delivered: bool = Field(default=False)
-    age: int
+    age: int = Field(default=0)
 
+#JJ friend 
+class FriendRequest(SQLModel, table=True):
+    __tablename__ = "FriendRequest"
+    id: Optional[int] = Field(default=None, primary_key=True)
+    from_user_id: int = Field(foreign_key="User.user_id")
+    to_user_id: int = Field(foreign_key="User.user_id")
+    status: str = Field(default="pending")   # pending, accepted, declined
+    created_at: int = Field(default_factory=lambda: int(time.time()))  # Unix timestamp
+    updated_at: int = Field(default_factory=lambda: int(time.time()))  # Unix timestamp
+
+class BlockedUser(SQLModel, table=True):
+    __tablename__ = "BlockedUser"
+    user_id: int = Field(foreign_key="User.user_id", primary_key=True)
+    blocked_user_id: int = Field(foreign_key="User.user_id", primary_key=True)
 
 #======= User Session Utilities =======
 
