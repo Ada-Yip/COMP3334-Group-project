@@ -25,7 +25,8 @@ sqlite_file_name = database_dir / "database.db"
 DATABASE_URL = f"sqlite:///{sqlite_file_name.as_posix()}"
 engine = create_engine(
     DATABASE_URL,
-    echo=False
+    echo=False,
+    connect_args={"check_same_thread": False}
 )
 
 
