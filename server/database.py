@@ -107,6 +107,11 @@ class FriendRequest(SQLModel, table=True):
     created_at: int = Field(default_factory=lambda: int(time.time()))  # Unix timestamp
     updated_at: int = Field(default_factory=lambda: int(time.time()))  # Unix timestamp
 
+class Friend(SQLModel, table=True):
+    __tablename__ = "Friend"
+    user_id: int = Field(foreign_key="User.user_id", primary_key=True)
+    friend_id: int = Field(foreign_key="User.user_id", primary_key=True)
+
 class BlockedUser(SQLModel, table=True):
     __tablename__ = "BlockedUser"
     user_id: int = Field(foreign_key="User.user_id", primary_key=True)

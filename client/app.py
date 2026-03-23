@@ -70,10 +70,10 @@ def friend_management_menu(client_obj: ClientAPI):
                             req_id = int(action)
                             accept_decline = normalize_choice(input("Accept (a) or decline (d)? "))
                             if accept_decline == 'a':
-                                res2 = client_obj.accept_friend_request(req_id)
+                                res2 = client_obj.respond_friend_request(req_id, "accept")
                                 print_message_from_response(res2)
                             elif accept_decline == 'd':
-                                res2 = client_obj.decline_friend_request(req_id)
+                                res2 = client_obj.respond_friend_request(req_id, "decline")
                                 print_message_from_response(res2)
                             else:
                                 print("Invalid choice")

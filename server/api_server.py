@@ -8,6 +8,7 @@ from .database import (
     User,
     Message,
     FriendRequest,  #JJ
+    Friend,         
     BlockedUser,     #JJ
     init_db,
     get_session,
@@ -204,13 +205,10 @@ def send_message(
             raise HTTPException(status_code=403, detail="You are blocked by this user")
         
         # Check if sender and receiver are friends (accepted request)
-        friend_check = session.exec(
-            select(FriendRequest).where(
-                ((FriendRequest.from_user_id == user.user_id) & (FriendRequest.to_user_id == receiver.user_id)) |
-                ((FriendRequest.from_user_id == receiver.user_id) & (FriendRequest.to_user_id == user.user_id)),
-                FriendRequest.status == "accepted"
-            )
-        ).first()
+        friend_check = session.exec(select(Friend).where(
+            Friend.user_id == user.user_id,
+            Friend.friend_id == receiver.user_id
+        )).first()
         if not friend_check:
             raise HTTPException(status_code=403, detail="You are not friends with this user")
         # ========== END CHECKS ==========
@@ -318,12 +316,47 @@ class FriendRequestReq(BaseModel):
 
 class FriendRequestActionReq(BaseModel):
     request_id: int
+    action: str #accept, decline
 
 class RemoveFriendReq(BaseModel):
     friend_username: str
 
 class BlockUserReq(BaseModel):
     block_username: str
+
+# edited friend request logic ###
+@app.post("/friend-requests/respond")
+def respond_friend_request(
+    req: FriendRequestActionReq,
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Respond to a pending friend request."""
+    friend_req = session.get(FriendRequest, req.request_id)
+    if not friend_req or friend_req.to_user_id != current_user.user_id:
+        raise HTTPException(status_code=404, detail="Request not found or not authorized")
+    if friend_req.status != "pending":
+        raise HTTPException(status_code=400, detail="Request already processed")
+
+    if req.action == "accept":
+        friend_req.status = "accepted"
+        link1 = Friend(user_id=current_user.user_id, friend_id=friend_req.from_user_id)
+        link2 = Friend(user_id=friend_req.from_user_id, friend_id=current_user.user_id)
+        session.add(link1)
+        session.add(link2)
+        message = "Friend request accepted"
+
+    elif req.action == "decline":
+        friend_req.status = "declined"
+        message = "Friend request declined"
+    
+    else:
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    friend_req.updated_at = int(time.time())
+    session.add(friend_req)
+    session.commit()
+    return {"message": message}
 
 ############ JJ Send friend request ################
 @app.post("/friend-requests/send")
@@ -338,19 +371,22 @@ def send_friend_request(
     if target.user_id == current_user.user_id:
         raise HTTPException(status_code=400, detail="Cannot send friend request to yourself")
     
-    # Check if already friends (accepted request)
-    existing = session.exec(
-        select(FriendRequest).where(
-            ((FriendRequest.from_user_id == current_user.user_id) & (FriendRequest.to_user_id == target.user_id)) |
-            ((FriendRequest.from_user_id == target.user_id) & (FriendRequest.to_user_id == current_user.user_id))
-        )
-    ).first()
-    if existing:
-        if existing.status == "accepted":
-            raise HTTPException(status_code=400, detail="Already friends")
-        elif existing.status == "pending":
-            raise HTTPException(status_code=400, detail="Friend request already pending")
-    
+    # Check if already friends 
+    friend_check = session.exec(select(Friend).where(
+        Friend.user_id == current_user.user_id,
+        Friend.friend_id == target.user_id
+    )).first()
+    if friend_check:
+        raise HTTPException(status_code=400, detail="Already friends")
+
+    existing_pending = session.exec(select(FriendRequest).where(
+        ((FriendRequest.from_user_id == current_user.user_id) & (FriendRequest.to_user_id == target.user_id)) |
+        ((FriendRequest.from_user_id == target.user_id) & (FriendRequest.to_user_id == current_user.user_id)),
+        FriendRequest.status == "pending"
+    )).first()
+    if existing_pending:
+        raise HTTPException(status_code=400, detail="Friend request already pending")
+
     # Check if blocked
     block_check = session.exec(
         select(BlockedUser).where(
@@ -369,49 +405,6 @@ def send_friend_request(
     session.add(new_req)
     session.commit()
     return {"message": "Friend request sent"}
-
-############ JJ Accept friend request ################
-@app.post("/friend-requests/accept")
-def accept_friend_request(
-    req: FriendRequestActionReq,   ###
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
-):
-    """Accept a pending friend request."""
-    friend_req = session.get(FriendRequest, req.request_id)
-    if not friend_req:
-        raise HTTPException(status_code=404, detail="Friend request not found")
-    if friend_req.to_user_id != current_user.user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to accept this request")
-    if friend_req.status != "pending":
-        raise HTTPException(status_code=400, detail="Request already processed")
-    
-    friend_req.status = "accepted"
-    friend_req.updated_at = int(time.time())
-    session.add(friend_req)
-    session.commit()
-    return {"message": "Friend request accepted"}
-
-############ JJ Decline friend request ################
-@app.post("/friend-requests/decline")
-def decline_friend_request(
-    req: FriendRequestActionReq,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
-):
-    """Decline a pending friend request."""
-    friend_req = session.get(FriendRequest, req.request_id)
-    if not friend_req:
-        raise HTTPException(status_code=404, detail="Friend request not found")
-    if friend_req.to_user_id != current_user.user_id:
-        raise HTTPException(status_code=403, detail="Not authorized to decline this request")
-    if friend_req.status != "pending":
-        raise HTTPException(status_code=400, detail="Request already processed")
-    
-    # Optionally delete or set to declined
-    session.delete(friend_req)   # or set status="declined"
-    session.commit()
-    return {"message": "Friend request declined"}
 
 ############ JJ List recieved friend request ################
 @app.get("/friend-requests/received")
@@ -474,15 +467,11 @@ def get_friends(
     """List all accepted friends."""
     # Get all accepted requests where current_user is either sender or receiver
     friends = session.exec(
-        select(FriendRequest).where(
-            ((FriendRequest.from_user_id == current_user.user_id) | (FriendRequest.to_user_id == current_user.user_id)),
-            FriendRequest.status == "accepted"
-        )
+        select(Friend).where(Friend.user_id == current_user.user_id)
     ).all()
     result = []
     for r in friends:
-        friend_id = r.to_user_id if r.from_user_id == current_user.user_id else r.from_user_id
-        friend = session.get(User, friend_id)
+        friend = session.get(User, r.friend_id)
         result.append({
             "user_id": friend.user_id,
             "username": friend.username_db
@@ -498,16 +487,15 @@ def remove_friend(
 ):
     """Remove an existing friend (delete the accepted friend request)."""
     target = get_valid_user_by_username(req.friend_username.strip(), session)
-    friend_req = session.exec(
-        select(FriendRequest).where(
-            ((FriendRequest.from_user_id == current_user.user_id) & (FriendRequest.to_user_id == target.user_id)) |
-            ((FriendRequest.from_user_id == target.user_id) & (FriendRequest.to_user_id == current_user.user_id)),
-            FriendRequest.status == "accepted"
-        )
-    ).first()
-    if not friend_req:
+    
+    #link1 for current user, link2 for target user
+    link1 = session.exec(select(Friend).where(Friend.user_id == current_user.user_id, Friend.friend_id == target.user_id)).first()
+    link2 = session.exec(select(Friend).where(Friend.user_id == target.user_id, Friend.friend_id == current_user.user_id)).first()
+
+    if not link1 or not link2:
         raise HTTPException(status_code=404, detail="Friend not found")
-    session.delete(friend_req)
+    session.delete(link1)
+    session.delete(link2)
     session.commit()
     return {"message": "Friend removed"}
 
@@ -533,15 +521,29 @@ def block_user(
     if existing:
         raise HTTPException(status_code=400, detail="User already blocked")
     
-    # Remove any pending friend requests between the two
-    reqs = session.exec(
-        select(FriendRequest).where(
-            ((FriendRequest.from_user_id == current_user.user_id) & (FriendRequest.to_user_id == target.user_id)) |
-            ((FriendRequest.from_user_id == target.user_id) & (FriendRequest.to_user_id == current_user.user_id))
-        )
-    ).all()
-    for r in reqs:
-        session.delete(r)
+    try:
+        # Remove friend link
+        link1 = session.exec(select(Friend).where(Friend.user_id == current_user.user_id, Friend.friend_id == target.user_id)).first()
+        link2 = session.exec(select(Friend).where(Friend.user_id == target.user_id, Friend.friend_id == current_user.user_id)).first()
+        if link1:
+            session.delete(link1)
+        if link2:
+            session.delete(link2)
+    except Exception:
+        session.rollback()
+        logger.exception("Error removing friend when blocking user")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+    
+    # Change pending friend requests to declined
+    friend_req = session.exec(select(FriendRequest).where(
+        ((FriendRequest.from_user_id == current_user.user_id) & (FriendRequest.to_user_id == target.user_id)) |
+        ((FriendRequest.from_user_id == target.user_id) & (FriendRequest.to_user_id == current_user.user_id)),
+        FriendRequest.status == "pending"
+    )).first()
+    if friend_req:
+        friend_req.status = "declined"
+        friend_req.updated_at = int(time.time())
+        session.add(friend_req)
     
     # Add block
     block = BlockedUser(user_id=current_user.user_id, blocked_user_id=target.user_id)

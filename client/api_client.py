@@ -51,11 +51,6 @@ class ClientAPI:
         """get user id from server"""
         return self.state.current_user_id
 
-    def generate_nonce(self) -> str:
-        #TODO: do actual nonce generation
-        """generate nonce"""
-        return secrets.token_hex(12)
-
     #===============API Functions==============================================
 
     def register_user(self, username: str, password: str) -> dict:
@@ -68,7 +63,7 @@ class ClientAPI:
             self.state.current_username = data["username"]
         return response
 
-    def login(self, username: str, password: str) -> dict:  # TODO: Encrypted login method is not yet done here.
+    def login(self, username: str, password: str) -> dict:  
         payload = {"username": username, "password": password}
         response = _request_json("POST", f"{self.base_url}/login", payload)
         if response.get("status_code") == 200:
@@ -88,6 +83,16 @@ class ClientAPI:
             print("You have been logged out successfully")
         return response
 
+    ### edited friend request logic ###
+    def respond_friend_request(self, request_id: int, action: str) -> dict:
+        """Respond to a pending friend request."""
+        return _request_json(
+            "POST",
+            f"{self.base_url}/friend-requests/respond",
+            {"request_id": request_id, "action": action},
+            token=self.state.session_token
+        )
+
     ### JJ friend ###
     def send_friend_request(self, to_username: str) -> dict:
         """Send a friend request to another user."""
@@ -95,24 +100,6 @@ class ClientAPI:
             "POST",
             f"{self.base_url}/friend-requests/send",
             {"to_username": to_username},
-            token=self.state.session_token
-        )
-    
-    def accept_friend_request(self, request_id: int) -> dict:
-        """Accept a pending friend request."""
-        return _request_json(
-            "POST",
-            f"{self.base_url}/friend-requests/accept",
-            {"request_id": request_id},
-            token=self.state.session_token
-        )
-    
-    def decline_friend_request(self, request_id: int) -> dict:
-        """Decline a pending friend request."""
-        return _request_json(
-            "POST",
-            f"{self.base_url}/friend-requests/decline",
-            {"request_id": request_id},
             token=self.state.session_token
         )
     
@@ -222,7 +209,7 @@ class ClientAPI:
             ciphertext = message.get('ciphertext')
             nonce = message.get('nonce')
             timestamp = message.get('timestamp')
-            age = message.get('age')        #remaining age
+            age = message.get('age')
 
             print(f"From: {sender}")
             print(f"To: {receiver}")
@@ -240,7 +227,7 @@ class ClientAPI:
                     print(f"Message: [Error] Missing ciphertext or nonce")
             except Exception as e:
                 print(f"Message: [Decryption Failed - Data corrupted or wrong key]")
-                print(f"Ciphertext: {ciphertext}")  #for debug
+                print(f"Ciphertext: {ciphertext}")  #TODO: for debug, delete later
         print("--------------------------------")
         print("===========End of Messages===========\n")
 
