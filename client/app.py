@@ -318,9 +318,9 @@ def main():
                 input("Enter 'y' to fetch all messages, 'n' to fetch unseen messages: ")
             )
             if fetch_all_message == 'y':
-                res = client_obj.fetch_messages_all()
+                res = client_obj.fetch_messages(unseen_only=False)
             else:
-                res = client_obj.fetch_messages_unseen()
+                res = client_obj.fetch_messages(unseen_only=True)
             print_message_from_response(res)
 
         elif action == '3':

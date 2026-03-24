@@ -255,22 +255,20 @@ class ClientAPI:
         }, token=self.state.session_token)
 
 
-    def fetch_messages_all(self) -> dict:
-        """fetch all messages from server"""
-        msg_response = _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=false",
-                                     token=self.state.session_token)
+    def fetch_messages(self, unseen_only: bool = False)->dict:
+        """fetch messages from server (all or unseen)"""
+        url_param = "true" if unseen_only else "false"
+        
+        msg_response = _request_json(
+            "POST", 
+            f"{self.base_url}/messages/fetch?unseen_only={url_param}",
+            token=self.state.session_token
+        )
+        
         if msg_response.get("status_code") == 200:
             data_payload = msg_response.get("data") or {}
             self.show_messages(data_payload)
-        return msg_response
-
-    def fetch_messages_unseen(self) -> dict:
-        """fetch only unseen messages from server"""
-        msg_response = _request_json("POST", f"{self.base_url}/messages/fetch?unseen_only=true",
-                                     token=self.state.session_token)
-        if msg_response.get("status_code") == 200:
-            data_payload = msg_response.get("data") or {}
-            self.show_messages(data_payload)
+            
         return msg_response
 
     def show_messages(self, data_payload: dict) -> None:

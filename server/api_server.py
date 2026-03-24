@@ -230,6 +230,20 @@ def send_message(
         logger.exception("Error sending message")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+def format_message_object(msgs) -> dict:
+        """format message object to list of dictionaries, used only in fetch function"""
+        current_time = int(time.time())
+        return [{
+            "sender_username": m.sender_username_db,
+            "receiver_username": m.receiver_username_db,
+            "ciphertext": m.ciphertext if m.age == 0 or m.age - (current_time - m.timestamp) >= 0 else "0",
+            "nonce": m.nonce,
+            "timestamp": m.timestamp,
+            "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
+            "is_delivered": m.is_delivered,
+            "counter": m.counter,
+        } for m in msgs]
+
 @app.post("/messages/fetch")
 def fetch_messages(
         unseen_only: bool = False,
@@ -243,18 +257,6 @@ def fetch_messages(
     If unseen_only is True, only fetch unseen messages.
     Supports pagination with offset and limit parameters.
     """
-    def format_message_object(msgs) -> dict:
-        """format message object to list of dictionaries, used only in fetch function"""
-        return [{
-            "sender_username": m.sender_username_db,
-            "receiver_username": m.receiver_username_db,
-            "ciphertext": m.ciphertext if m.age == 0 or m.age - (int(time.time()) - m.timestamp) >= 0 else "0",
-            "nonce": m.nonce,
-            "timestamp": m.timestamp,
-            "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
-            "is_delivered": m.is_delivered,
-            "counter": m.counter,
-        } for m in msgs]
     
     try:
         #=========unseen_only=true=========
@@ -268,38 +270,33 @@ def fetch_messages(
         unseen_messages_count = len(unseen_msgs)
         for m in unseen_msgs:
             m.is_delivered = True
-        messages_list_unseen = format_message_object(unseen_msgs)
 
         if unseen_only:
-            remove_expired_messages(session)
-            session.commit()
-            return {
-                "data": {
-                    "messages": messages_list_unseen,
-                    "unseen_count": unseen_messages_count,
-                }
-            }
-
-        #=========unseen_only=false=========
-        msgs_all = session.exec(
-            select(Message).where(Message.receiver_id == user.user_id)
-        ).all()
-
-        messages_list_all = format_message_object(msgs_all)
-
-        paginated_messages = messages_list_all[offset:offset + limit]
-
-        remove_expired_messages(session)
-        session.commit()
-        return {
-            "data": {
-                "messages": paginated_messages,
+            result_messages = format_message_object(unseen_msgs)
+            response_data = {
+                "messages": result_messages,
                 "unseen_count": unseen_messages_count,
-                "total_count": len(messages_list_all),
+            }
+        #=========unseen_only=false=========
+        else:
+            paginated_msgs = session.exec(
+                        select(Message)
+                        .where(Message.receiver_id == user.user_id)
+                        .offset(offset)
+                        .limit(limit)
+                    ).all()
+            result_messages = format_message_object(paginated_msgs)
+            
+            response_data = {
+                "messages": result_messages,
+                "unseen_count": unseen_messages_count,
                 "offset": offset,
                 "limit": limit,
             }
-        }
+
+        remove_expired_messages(session)
+        session.commit()
+        return {"data": response_data}
 
     except HTTPException:
         raise
