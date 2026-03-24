@@ -228,12 +228,12 @@ def main():
                 continue
 
             selected_conv = conversations[choice_idx]
-            sender = selected_conv.sender_username
+            partner = selected_conv.sender_username
             all_messages = sorted(selected_conv.message_list, key=lambda m: m.get("timestamp", 0), reverse=True)
             offset = 0
             limit = 10
             while True:
-                print(f"\n===========Messages from {sender}===========\n")
+                print(f"\n===========Conversation with {partner}===========\n")
                 paginated = all_messages[offset:offset + limit]
                 if not paginated:
                     print("No more messages.\n")
