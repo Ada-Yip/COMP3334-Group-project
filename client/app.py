@@ -208,7 +208,7 @@ def main():
                 print("No conversations yet.\n")
                 return
             for idx, conv in enumerate(conversations, 1):
-                time_ago = client_obj._calc_time_ago(conv.last_timestamp)
+                time_ago = client_obj.calc_time_ago(conv.last_timestamp)
                 if conv.unread_count > 0:
                     print(f"[{idx}] {conv.sender_username} - Last: {time_ago} ({conv.unread_count} unread)")
                 else:
@@ -247,6 +247,7 @@ def main():
                     nonce = message.get("nonce")
                     timestamp = message.get("timestamp")
                     age = message.get("age")
+                    counter = message.get("counter")
                     print(f"From: {sender_name}")
                     print(f"To: {receiver_name}")
                     try:
@@ -254,8 +255,18 @@ def main():
                         if age < 0:
                             print("Message: [Expired Message]")
                             print(f"Sent at {sent_time}, expired {abs(age)} seconds ago")
-                        elif ciphertext and nonce and ciphertext != "0":
-                            plaintext = client_obj.crypto_manager.decrypt(ciphertext, nonce)
+                        elif ciphertext and nonce and ciphertext != "0":    #0 for TTL
+                            if sender_name not in client_obj.crypto_manager.session_keys:
+                                peer_res = client_obj.get_public_key_by_username(sender_name)
+                                if peer_res.get("status_code") == 200:
+                                    client_obj.crypto_manager.derive_shared_key(peer_res['public_key'], sender_name)
+                            plaintext = client_obj.crypto_manager.decrypt(
+                                b64_ciphertext=ciphertext, 
+                                b64_nonce=nonce, 
+                                sender_username=sender_name, 
+                                recipient_username=receiver_name, 
+                                counter=counter,
+                            )
                             print(f"Message: {plaintext}")
                             print(f"Sent at {sent_time}")
                             print(f"Expires in {age} seconds" if age > 0 else "Message never expires")

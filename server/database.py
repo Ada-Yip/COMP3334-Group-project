@@ -97,8 +97,8 @@ class Message(SQLModel, table=True):
     timestamp: int = Field(default_factory=lambda: int(time.time()))
     is_delivered: bool = Field(default=False)
     age: int = Field(default=0)
+    counter: int = Field(default=0) #for replay attack protection
 
-#JJ friend 
 class FriendRequest(SQLModel, table=True):
     __tablename__ = "FriendRequest"
     id: Optional[int] = Field(default=None, primary_key=True)

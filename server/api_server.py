@@ -1,15 +1,15 @@
 """
 api and enter point
 """
-from datetime import datetime, timezone #JJ
+from datetime import datetime, timezone 
 from fastapi import FastAPI, Depends, HTTPException, Header
 from sqlmodel import Session, select
 from .database import (
     User,
     Message,
-    FriendRequest,  #JJ
+    FriendRequest,  
     Friend,         
-    BlockedUser,     #JJ
+    BlockedUser,     
     init_db,
     get_session,
     get_valid_user_by_id,
@@ -31,9 +31,6 @@ import time
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-#FastAPI instance
-app = FastAPI(title="EE2E Server")
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -44,10 +41,10 @@ async def lifespan(app: FastAPI):
     logger.info("shutting down server")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan, title="EE2E Server")
 
 
-# --- API 端點 ---
+# --- API endpoint ---
 
 # Register Request, using pydantic
 class RegisterReq(BaseModel):
@@ -160,15 +157,14 @@ def logout(
         logger.exception("Error logging out")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-
-@app.get("/users/{user_id}/public_key")
-def get_user_public_key(
-        user_id: int,
+@app.get("/users/{username}/public_key")
+def get_user_public_key_by_username(
+        username: str,
         session: Session = Depends(get_session),
 ):
-    """get user public key from database(for current user)"""
-    target_user = get_valid_user_by_id(user_id, session=session)
-    return {"public_key": target_user.public_key_db}  #TODO: add validation to key changes?
+    """get user public key from database(from friend request)"""
+    target_user = get_valid_user_by_username(username, session=session)
+    return {"public_key": target_user.public_key_db}    #TODO: add validation to key changes?
 
 
 #=======Message API=======
@@ -179,9 +175,10 @@ class SendMsgReq(BaseModel):
     ciphertext: str
     nonce: str
     age: int
+    counter: int
 
 
-@app.post("/messages/send")      ### JJ added frd/block check ###
+@app.post("/messages/send")
 def send_message(
         req: SendMsgReq,
         user: User = Depends(get_current_user),
@@ -220,6 +217,7 @@ def send_message(
             nonce=req.nonce,
             timestamp=int(time.time()),
             age=req.age,
+            counter=req.counter,
             )
         session.add(msg)
         session.commit()
@@ -245,6 +243,19 @@ def fetch_messages(
     If unseen_only is True, only fetch unseen messages.
     Supports pagination with offset and limit parameters.
     """
+    def format_message_object(msgs) -> dict:
+        """format message object to list of dictionaries, used only in fetch function"""
+        return [{
+            "sender_username": m.sender_username_db,
+            "receiver_username": m.receiver_username_db,
+            "ciphertext": m.ciphertext if m.age == 0 or m.age - (int(time.time()) - m.timestamp) >= 0 else "0",
+            "nonce": m.nonce,
+            "timestamp": m.timestamp,
+            "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
+            "is_delivered": m.is_delivered,
+            "counter": m.counter,
+        } for m in msgs]
+    
     try:
         #=========unseen_only=true=========
         unseen_msgs = session.exec(
@@ -257,19 +268,7 @@ def fetch_messages(
         unseen_messages_count = len(unseen_msgs)
         for m in unseen_msgs:
             m.is_delivered = True
-
-        messages_list_unseen = [
-            {
-                "sender_username": m.sender_username_db,
-                "receiver_username": m.receiver_username_db,
-                "ciphertext": m.ciphertext if m.age == 0 or m.age - (int(time.time()) - m.timestamp) >= 0 else "0",
-                "nonce": m.nonce,
-                "timestamp": m.timestamp,
-                "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
-                "is_delivered": m.is_delivered,
-            }
-            for m in unseen_msgs
-        ]
+        messages_list_unseen = format_message_object(unseen_msgs)
 
         if unseen_only:
             remove_expired_messages(session)
@@ -286,18 +285,7 @@ def fetch_messages(
             select(Message).where(Message.receiver_id == user.user_id)
         ).all()
 
-        messages_list_all = [
-            {
-                "sender_username": m.sender_username_db,
-                "receiver_username": m.receiver_username_db,
-                "ciphertext": m.ciphertext if m.age == 0 or m.age - (int(time.time()) - m.timestamp) >= 0 else "0",
-                "nonce": m.nonce,
-                "timestamp": m.timestamp,
-                "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
-                "is_delivered": m.is_delivered,
-            }
-            for m in msgs_all
-        ]
+        messages_list_all = format_message_object(msgs_all)
 
         paginated_messages = messages_list_all[offset:offset + limit]
 
@@ -320,7 +308,7 @@ def fetch_messages(
         logger.exception("Error fetching messages")
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
-# JJ friend
+#====================================Friend Request========================================
 class FriendRequestReq(BaseModel):
     to_username: str
 
@@ -334,7 +322,6 @@ class RemoveFriendReq(BaseModel):
 class BlockUserReq(BaseModel):
     block_username: str
 
-# edited friend request logic ###
 @app.post("/friend-requests/respond")
 def respond_friend_request(
     req: FriendRequestActionReq,
@@ -368,7 +355,6 @@ def respond_friend_request(
     session.commit()
     return {"message": message}
 
-############ JJ Send friend request ################
 @app.post("/friend-requests/send")
 def send_friend_request(
     req: FriendRequestReq,
@@ -416,7 +402,6 @@ def send_friend_request(
     session.commit()
     return {"message": "Friend request sent"}
 
-############ JJ List recieved friend request ################
 @app.get("/friend-requests/received")
 def get_received_requests(
     current_user: User = Depends(get_current_user),
@@ -442,7 +427,6 @@ def get_received_requests(
     
     return {"requests": result}
 
-############ JJ List sent friend request ################
 @app.get("/friend-requests/sent")
 def get_sent_requests(
     current_user: User = Depends(get_current_user),
@@ -463,12 +447,11 @@ def get_sent_requests(
             result.append({
                 "id": r.id,
                 "to_username": to_user.username_db,
-                "created_at": r.created_at.isoformat()
+                "created_at": r.created_at
             })
     
     return {"requests": result}
 
-############ JJ List friend accepeted ################
 @app.get("/friends")
 def get_friends(
     current_user: User = Depends(get_current_user),
@@ -488,7 +471,6 @@ def get_friends(
         })
     return {"friends": result}
 
-############ JJ Remove friend  ################
 @app.post("/friends/remove")
 def remove_friend(
     req: RemoveFriendReq,
@@ -509,7 +491,7 @@ def remove_friend(
     session.commit()
     return {"message": "Friend removed"}
 
-############ JJ Block user  ################
+#====================================Block / Unblock User========================================
 @app.post("/users/block")
 def block_user(
     req: BlockUserReq,
@@ -561,7 +543,6 @@ def block_user(
     session.commit()
     return {"message": "User blocked"}
 
-############ JJ Unblock user  ################
 @app.post("/users/unblock")
 def unblock_user(
     req: BlockUserReq,

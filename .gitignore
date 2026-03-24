@@ -47,3 +47,7 @@ Thumbs.db
 
 ### Jupyter
 .ipynb_checkpoints/
+
+
+### Local storage
+local_data_storage/

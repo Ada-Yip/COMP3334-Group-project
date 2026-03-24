@@ -8,7 +8,7 @@ import time
 from dataclasses import dataclass, field
 from urllib import error, request
 from datetime import datetime, timedelta
-from config import SERVER_URL, SHARED_SECRET
+from config import SERVER_URL
 from crypto_manager import CryptoManager
 
 
@@ -40,10 +40,10 @@ class ClientAPI:
     def __init__(self, base_url: str = SERVER_URL, state: ClientState | None = None):
         self.state: ClientState = state or ClientState(base_url=base_url)
         self.base_url: str = self.state.base_url
-        self.crypto_manager = CryptoManager(shared_key=SHARED_SECRET)
+        self.crypto_manager = CryptoManager()
 
     #===============Utility Functions========================================
-    def _calc_time_ago(self, timestamp: int) -> str:
+    def calc_time_ago(self, timestamp: int) -> str:
         """Convert unix timestamp to human-readable 'time ago' format."""
         now = int(time.time())
         diff = now - timestamp
@@ -101,14 +101,9 @@ class ClientAPI:
             )
         return conversations
 
-    def generate_local_public_key(self) -> str:
-        """generate local public key"""
-        #TODO: do actual key generation
-        return "dummy_key"
-
-    def get_public_key(self, user_id: int) -> dict:
-        """get public key from server"""
-        return _request_json("GET", f"{self.base_url}/users/{user_id}/public_key", token=self.state.session_token)
+    def get_public_key_by_username(self, username: str) -> dict:
+        """get public key from server by username"""
+        return _request_json("GET", f"{self.base_url}/users/{username}/public_key", token=self.state.session_token)
 
     def get_user_name(self) -> str:
         """get user name from server"""
@@ -122,7 +117,14 @@ class ClientAPI:
 
     def register_user(self, username: str, password: str) -> dict:
         """register user to server"""
-        payload = {"username": username, "password": password, "public_key": self.generate_local_public_key()}
+
+        self.crypto_manager.initialize_for_user(username)   #generate private key and save to local storage
+
+        payload = {
+            "username": username, 
+            "password": password, 
+            "public_key": self.crypto_manager.get_local_public_key_b64()
+            }
         response = _request_json("POST", f"{self.base_url}/register", payload)
         if response.get("status_code") == 200:
             data = response.get("data")
@@ -138,6 +140,7 @@ class ClientAPI:
             self.state.current_user_id = data["user_id"]
             self.state.current_username = data["username"]
             self.state.session_token = data["token"]
+            self.crypto_manager.initialize_for_user(username)   #check if private key and counters are loaded from local storage
         return response
 
     def logout(self) -> dict:
@@ -150,7 +153,8 @@ class ClientAPI:
             print("You have been logged out successfully")
         return response
 
-    ### edited friend request logic ###
+    #====================================Friend Request========================================
+
     def respond_friend_request(self, request_id: int, action: str) -> dict:
         """Respond to a pending friend request."""
         return _request_json(
@@ -160,7 +164,6 @@ class ClientAPI:
             token=self.state.session_token
         )
 
-    ### JJ friend ###
     def send_friend_request(self, to_username: str) -> dict:
         """Send a friend request to another user."""
         return _request_json(
@@ -220,7 +223,8 @@ class ClientAPI:
             {"block_username": block_username},
             token=self.state.session_token
         )
-    ### JJ friend end ###
+
+#====================================Message========================================
 
     def send_message(
             self,
@@ -229,13 +233,27 @@ class ClientAPI:
             age: int,
     ) -> dict:
         """send message to server"""
-        encrypted_text, actual_nonce = self.crypto_manager.encrypt(plaintext)
+        if receiver_username not in self.crypto_manager.session_keys:
+            peer_res = self.get_public_key_by_username(receiver_username)
+            self.crypto_manager.derive_shared_key(peer_res['public_key'], receiver_username)
+
+        current_counter = self.state.next_local_message_id
+        self.state.next_local_message_id += 1
+
+        encrypted_text, actual_nonce = self.crypto_manager.encrypt(
+            plaintext=plaintext,
+            recipient_username=receiver_username,
+            sender_username=self.state.current_username,
+            counter=current_counter
+        )
         return _request_json("POST", f"{self.base_url}/messages/send", {
             "receiver_username": receiver_username,
             "ciphertext": encrypted_text,
             "nonce": actual_nonce,
             "age": age,
+            "counter": current_counter,
         }, token=self.state.session_token)
+
 
     def fetch_messages_all(self) -> dict:
         """fetch all messages from server"""
@@ -267,9 +285,9 @@ class ClientAPI:
         unseen_count = data_payload.get("unseen_count")
         print(f"Total messages: {len(messages)}")
         if unseen_count is None:
-            print("Total unseesn: N/A")
+            print("Total unseen: N/A")
         else:
-            print(f"Total unseesn: {unseen_count}")
+            print(f"Total unseen: {unseen_count}")
         for message in messages:
             sender = message.get('sender_username')
             receiver = message.get('receiver_username')
@@ -277,6 +295,7 @@ class ClientAPI:
             nonce = message.get('nonce')
             timestamp = message.get('timestamp')
             age = message.get('age')
+            counter = message.get('counter')
 
             print(f"From: {sender}")
             print(f"To: {receiver}")
@@ -285,8 +304,19 @@ class ClientAPI:
                 if age < 0:
                     print(f"Message: [Expired Message]")
                     print(f"Sent at {sent_time}, expired {abs(age)} seconds ago")
-                elif ciphertext and nonce:
-                    plaintext = self.crypto_manager.decrypt(ciphertext, nonce)
+                elif ciphertext and nonce and ciphertext != "0":
+                    if sender not in self.crypto_manager.session_keys:
+                        peer_res = self.get_public_key_by_username(sender)
+                        if peer_res.get("status_code") == 200:
+                            self.crypto_manager.derive_shared_key(peer_res['public_key'], sender)
+
+                    plaintext = self.crypto_manager.decrypt(
+                        b64_ciphertext=ciphertext, 
+                        b64_nonce=nonce, 
+                        sender_username=sender, 
+                        recipient_username=receiver, 
+                        counter=counter,
+                    )
                     print(f"Message: {plaintext}")
                     print(f"Sent at {sent_time}")
                     print(f"Expires in {age} seconds" if age > 0 else "")
@@ -343,11 +373,3 @@ def _request_json(
         return {"status_code": exc.code, "detail": detail}
     except error.URLError as exc:
         return {"status_code": 0, "detail": {"error": str(exc)}}
-
-
-#TODO: fix it later, currently not used
-def reserve_local_message_id(state: ClientState) -> int:
-    """Return and advance a local message counter for CLI tracking."""
-    local_id = state.next_local_message_id
-    state.next_local_message_id += 1
-    return local_id
