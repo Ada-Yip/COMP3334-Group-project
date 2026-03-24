@@ -7,15 +7,15 @@ from sqlmodel import Session, select
 from .database import (
     User,
     Message,
-    FriendRequest,  
-    Friend,         
-    BlockedUser,     
+    FriendRequest,
+    Friend,
+    BlockedUser,
     init_db,
     get_session,
     get_valid_user_by_id,
     get_valid_user_by_username,
     check_password,
-    get_valid_session_from_db, remove_expired_messages,
+    get_valid_session_from_db, remove_expired_messages, OTP,
 )
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
@@ -27,6 +27,7 @@ from .security_service import (
     )
 import logging
 import time
+import pyotp
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -559,3 +560,104 @@ def unblock_user(
     session.delete(block)
     session.commit()
     return {"message": "User unblocked"}
+
+@app.post("/OTP/set")
+def setup_otp(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    try:
+        if (session.execute(
+                select(OTP).where(OTP.user_id == current_user.user_id)
+        ).first()):
+            raise HTTPException(status_code=400, detail="OTP already set up")
+        key = pyotp.random_base32()
+        otp_entry = OTP(user_id=current_user.user_id, secret_key=key)
+        session.add(otp_entry)
+        session.commit()
+        logger.info(f"OTP set up successfully for user {current_user.username_db}")
+        return {"message": "OTP set up successfully"}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Error setting up OTP")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.post("/OTP/get-key")
+def get_key(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    try:
+        if (session.execute(
+                select(OTP).where(OTP.user_id == current_user.user_id)
+        ).first() is None):
+            raise HTTPException(status_code=404, detail="OTP not set up")
+        otp_entry = session.execute(
+            select(OTP).where(OTP.user_id == current_user.user_id)).first()
+        secret = getattr(otp_entry, "secret_key", None)
+        logger.info(f"OTP key retrieved successfully for user {current_user.username_db}")
+        return {"message": "OTP key retrieved successfully",
+                "data": {"secret_key": secret
+             }
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Error retrieving OTP key")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.post("/OTP/get")
+def get_otp(
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
+):
+    try:
+        if (session.execute(
+                select(OTP).where(OTP.user_id == current_user.user_id)
+        ).first()) is None:
+            raise HTTPException(status_code=404, detail="OTP not set up")
+        otp_entry = session.execute(
+            select(OTP).where(OTP.user_id == current_user.user_id)).first()
+        secret = getattr(otp_entry, "secret_key", None)
+        totp = pyotp.TOTP(secret)
+        logger.info(f"OTP retrieved successfully for user {current_user.username_db}")
+        return {"message": "OTP retrieved successfully",
+                "data":{"totp": totp.now()
+                        }
+                }
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Error retrieving OTP")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.post("/OTP/verify")
+def verify_otp(
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
+):
+    try:
+        if (session.execute(
+            select(OTP).where(OTP.user_id == current_user.user_id)
+        )).first() is None:
+            raise HTTPException(status_code=404, detail="OTP not set up")
+        otp_entry = session.execute(
+            select(OTP).where(OTP.user_id == current_user.user_id)).first()
+        secret = getattr(otp_entry, "secret_key", None)
+        totp = pyotp.TOTP(secret)
+        if totp.verify(totp.now()):
+            logger.info(f"OTP verified successfully for user {current_user.username_db}")
+            return {"message": "OTP verified successfully"}
+        else:
+            logger.error(f"OTP verification failed for user {current_user.username_db}")
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Error verifying OTP")
+        raise HTTPException(status_code=500, detail="Internal Server Error")

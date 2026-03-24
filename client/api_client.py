@@ -331,6 +331,36 @@ class ClientAPI:
         print("--------------------------------")
         print("===========End of Messages===========\n")
 
+    def set_otp(self, secret: str) -> dict:
+        """set OTP secret for current user"""
+        response = _request_json(
+            "POST",
+            f"{self.base_url}/OTP/set",
+            {"secret": secret},
+            token=self.state.session_token
+        )
+        return response
+
+
+    def get_otp_key(self) -> dict:
+        """get OTP key for current user"""
+        return _request_json(
+            "POST",
+            f"{self.base_url}/OTP/get-key",
+            {"secret": self.state.session_token},
+            token=self.state.session_token
+        )
+
+    def verify_otp(self, secret: str) -> bool:
+        """verify OTP secret for current user"""
+        response = _request_json(
+            "POST",
+            f"{self.base_url}/OTP/verify",
+            {"secret": secret},
+            token=self.state.session_token
+        )
+        return response.get("status_code") == 200
+
 
 def _request_json(
         method: str,
