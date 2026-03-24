@@ -24,17 +24,17 @@ Requirements: 6.5, 6.7, 6.6, 6.8, 6.9
 - [x] Basic Client-Server structure & API setup: @Attp1067
 
 ### 6.5 Requirement @JJ
-- [ ] All Finished
+- [x] All Finished
 requirements:
-- [ ] (R13) Friend request workflow: @JJ
+- [x] (R13) Friend request workflow: @JJ
 • Users must add contacts via a request → accept/decline workflow (not instant adding by 
 default). 
 • Users can send friend requests by username/email/contact code. 
-- [ ] (R14) Request lifecycle: @JJ
+- [x] (R14) Request lifecycle: @JJ
 • Receiver can accept or decline; sender can cancel; both can view pending requests. 
-- [ ] (R15) Blocking / removing: @JJ
+- [x] (R15) Blocking / removing: @JJ
 • Users can remove friends and block users; blocked users’ requests/messages are ignored. 
-- [ ] (R16) Default anti-spam control: @JJ
+- [x] (R16) Default anti-spam control: @JJ
 • By default, non-friends must not be able to send arbitrary chat messages (only friend 
 requests), or provide an equivalent control with justification.
 
