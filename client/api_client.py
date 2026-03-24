@@ -32,10 +32,36 @@ class Conversation:
     message_list: list = field(default_factory=list)
 
 
+
 class ClientAPI:
     """
     API wrapper that owns client session state.
     """
+
+    def _group_messages_by_contact(self, messages: list) -> list[Conversation]:
+        """Group messages by conversation partner (the other person in the conversation)."""
+        conversations: dict[str, Conversation] = {}
+        current_user = self.state.current_username
+        for msg in messages:
+            # 決定對話對象
+            if msg.get("sender_username") == current_user:
+                contact = msg.get("receiver_username")
+            else:
+                contact = msg.get("sender_username")
+            if not contact:
+                continue
+            ts = msg.get("timestamp", 0)
+            if contact not in conversations:
+                conversations[contact] = Conversation(
+                    sender_username=contact,  # 這裡用 sender_username 欄位存對話對象名稱
+                    last_timestamp=ts,
+                    unread_count=0,
+                    message_list=[],
+                )
+            conversations[contact].message_list.append(msg)
+            if ts > conversations[contact].last_timestamp:
+                conversations[contact].last_timestamp = ts
+        return sorted(conversations.values(), key=lambda conv: conv.last_timestamp, reverse=True)
 
     def __init__(self, base_url: str = SERVER_URL, state: ClientState | None = None):
         self.state: ClientState = state or ClientState(base_url=base_url)
@@ -84,20 +110,23 @@ class ClientAPI:
         return sorted(conversations.values(), key=lambda conv: conv.last_timestamp, reverse=True)
 
     def get_conversations_list(self) -> list[Conversation]:
-        """Fetch all messages and return grouped conversations with unread counts."""
+        """Fetch all messages (sent and received) for View messages only."""
         msg_response = _request_json(
             "POST",
-            f"{self.base_url}/messages/fetch?unseen_only=false&offset=0&limit=10000",
+            f"{self.base_url}/messages/conversations?offset=0&limit=10000",
             token=self.state.session_token,
         )
         if msg_response.get("status_code") != 200:
             return []
         data_payload = msg_response.get("data") or {}
         messages = data_payload.get("messages") or []
-        conversations = self._group_messages_by_sender(messages)
+        conversations = self._group_messages_by_contact(messages)
         for conv in conversations:
             conv.unread_count = sum(
-                1 for m in conv.message_list if m.get("age", 0) >= 0 and not m.get("is_delivered", True)
+                1 for m in conv.message_list 
+                if m.get("age", 0) >= 0 
+                and not m.get("is_delivered", True)
+                and m.get("sender_username") != self.state.current_username  # 只計算收到的未讀
             )
         return conversations
 

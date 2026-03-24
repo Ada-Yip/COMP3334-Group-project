@@ -1,3 +1,5 @@
+
+
 """
 api and enter point
 """
@@ -43,6 +45,44 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan, title="EE2E Server")
+
+# 在 app = FastAPI(...) 之後新增 /messages/conversations 端點
+from sqlalchemy import or_
+
+@app.post("/messages/conversations")
+def get_all_conversations(
+        offset: int = 0,
+        limit: int = 10000,
+        user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
+):
+    """
+    Fetch all messages (sent and received) for viewing conversations.
+    This includes both sides of the conversation.
+    """
+    try:
+        all_messages = session.exec(
+            select(Message)
+            .where(
+                or_(Message.receiver_id == user.user_id, Message.sender_id == user.user_id)
+            )
+            .order_by(Message.timestamp.desc())
+            .offset(offset)
+            .limit(limit)
+        ).all()
+        result_messages = format_message_object(all_messages)
+        response_data = {
+            "messages": result_messages,
+            "offset": offset,
+            "limit": limit,
+        }
+        remove_expired_messages(session)
+        session.commit()
+        return {"data": response_data}
+    except Exception as e:
+        session.rollback()
+        logger.exception("Error fetching conversations")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
 
 # --- API endpoint ---
