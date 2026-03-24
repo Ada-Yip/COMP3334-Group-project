@@ -235,12 +235,15 @@ def send_message(
 @app.post("/messages/fetch")
 def fetch_messages(
         unseen_only: bool = False,
+        offset: int = 0,
+        limit: int = 10000,
         user: User = Depends(get_current_user),
         session: Session = Depends(get_session),        
 ):
     """
     Current user fetch messages from database.
     If unseen_only is True, only fetch unseen messages.
+    Supports pagination with offset and limit parameters.
     """
     try:
         #=========unseen_only=true=========
@@ -263,6 +266,7 @@ def fetch_messages(
                 "nonce": m.nonce,
                 "timestamp": m.timestamp,
                 "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
+                "is_delivered": m.is_delivered,
             }
             for m in unseen_msgs
         ]
@@ -290,16 +294,22 @@ def fetch_messages(
                 "nonce": m.nonce,
                 "timestamp": m.timestamp,
                 "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
+                "is_delivered": m.is_delivered,
             }
             for m in msgs_all
         ]
+
+        paginated_messages = messages_list_all[offset:offset + limit]
 
         remove_expired_messages(session)
         session.commit()
         return {
             "data": {
-                "messages": messages_list_all,
+                "messages": paginated_messages,
                 "unseen_count": unseen_messages_count,
+                "total_count": len(messages_list_all),
+                "offset": offset,
+                "limit": limit,
             }
         }
 

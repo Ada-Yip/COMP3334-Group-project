@@ -199,15 +199,90 @@ def main():
             print("Invalid choice. Please enter 'y' or 'n'.")
 
 
+    def view_messages(client_obj: ClientAPI):
+        """View messages with conversation list and pagination."""
+        while True:
+            print("\n===========Conversation List===========\n")
+            conversations = client_obj.get_conversations_list()
+            if not conversations:
+                print("No conversations yet.\n")
+                return
+            for idx, conv in enumerate(conversations, 1):
+                time_ago = client_obj._calc_time_ago(conv.last_timestamp)
+                if conv.unread_count > 0:
+                    print(f"[{idx}] {conv.sender_username} - Last: {time_ago} ({conv.unread_count} unread)")
+                else:
+                    print(f"[{idx}] {conv.sender_username} - Last: {time_ago}")
+            print("\n[0] Back to main menu")
+            print("--------------------------------")
+            choice = input("Select conversation (number): ").strip()
+            if choice == "0":
+                return
+            try:
+                choice_idx = int(choice) - 1
+            except ValueError:
+                print("Invalid input. Please enter a number.")
+                continue
+            if choice_idx < 0 or choice_idx >= len(conversations):
+                print("Invalid choice. Please try again.")
+                continue
+
+            selected_conv = conversations[choice_idx]
+            sender = selected_conv.sender_username
+            all_messages = sorted(selected_conv.message_list, key=lambda m: m.get("timestamp", 0), reverse=True)
+            offset = 0
+            limit = 10
+            while True:
+                print(f"\n===========Messages from {sender}===========\n")
+                paginated = all_messages[offset:offset + limit]
+                if not paginated:
+                    print("No more messages.\n")
+                    break
+                print(f"Showing messages {offset + 1} to {offset + len(paginated)} of {len(all_messages)}")
+                print("--------------------------------\n")
+                for message in paginated:
+                    sender_name = message.get("sender_username")
+                    receiver_name = message.get("receiver_username")
+                    ciphertext = message.get("ciphertext")
+                    nonce = message.get("nonce")
+                    timestamp = message.get("timestamp")
+                    age = message.get("age")
+                    print(f"From: {sender_name}")
+                    print(f"To: {receiver_name}")
+                    try:
+                        sent_time = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                        if age < 0:
+                            print("Message: [Expired Message]")
+                            print(f"Sent at {sent_time}, expired {abs(age)} seconds ago")
+                        elif ciphertext and nonce and ciphertext != "0":
+                            plaintext = client_obj.crypto_manager.decrypt(ciphertext, nonce)
+                            print(f"Message: {plaintext}")
+                            print(f"Sent at {sent_time}")
+                            print(f"Expires in {age} seconds" if age > 0 else "Message never expires")
+                        else:
+                            print("Message: [Error] Missing ciphertext or nonce")
+                    except Exception:
+                        print("Message: [Decryption Failed - Data corrupted or wrong key]")
+                    print("--------------------------------\n")
+                if offset + limit < len(all_messages):
+                    user_input = input("Press [Enter] to continue, or [0] to go back: ").strip()
+                    if user_input == "0":
+                        break
+                    offset += limit
+                else:
+                    input("No more messages. Press [Enter] to go back: ")
+                    break
+
     while True:
         print("\n===========What would you like to do?===========")
         print("1) Send a message")
         print("2) Fetch messages")
-        print("3) Friend management")
-        print("4) Logout and exit")
-        print("5) Exit without logout")
+        print("3) View messages")
+        print("4) Friend management")
+        print("5) Logout and exit")
+        print("6) Exit without logout")
 
-        action = normalize_choice(input("Choose 1/2/3/4/5: "))
+        action = normalize_choice(input("Choose 1/2/3/4/5/6: "))
 
         if action == '1':
             print("===========Send Message===========\n")
@@ -238,20 +313,23 @@ def main():
             print_message_from_response(res)
 
         elif action == '3':
+            view_messages(client_obj)
+
+        elif action == '4':
             # Friend management submenu
             friend_management_menu(client_obj)
 
-        elif action == '4':
+        elif action == '5':
             res = client_obj.logout()
             print_message_from_response(res)
             return
         
-        elif action == '5':
+        elif action == '6':
             print("Exit without logout selected.")
             return
 
         else:
-            print("Invalid choice. Please enter 1, 2, 3, 4 or 5.")
+            print("Invalid choice. Please enter 1, 2, 3, 4, 5 or 6.")
 
 
 if __name__ == "__main__":

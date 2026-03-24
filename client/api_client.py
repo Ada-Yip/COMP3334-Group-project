@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import secrets
+import time
 from dataclasses import dataclass, field
 from urllib import error, request
-from datetime import datetime
+from datetime import datetime, timedelta
 from config import SERVER_URL, SHARED_SECRET
 from crypto_manager import CryptoManager
 
@@ -22,6 +23,14 @@ class ClientState:
     next_local_message_id: int = 1
     seen_message_ids: set[int] = field(default_factory=set)
 
+@dataclass
+class Conversation:
+    """Represents a conversation with one contact."""
+    sender_username: str
+    last_timestamp: int
+    unread_count: int
+    message_list: list = field(default_factory=list)
+
 
 class ClientAPI:
     """
@@ -34,6 +43,64 @@ class ClientAPI:
         self.crypto_manager = CryptoManager(shared_key=SHARED_SECRET)
 
     #===============Utility Functions========================================
+    def _calc_time_ago(self, timestamp: int) -> str:
+        """Convert unix timestamp to human-readable 'time ago' format."""
+        now = int(time.time())
+        diff = now - timestamp
+        if diff < 60:
+            return "just now"
+        if diff < 3600:
+            mins = diff // 60
+            return f"{mins}m ago" if mins > 1 else "1m ago"
+        if diff < 86400:
+            hours = diff // 3600
+            return f"{hours}h ago" if hours > 1 else "1h ago"
+        dt = datetime.fromtimestamp(timestamp)
+        today = datetime.now()
+        if dt.date() == today.date():
+            return f"Today {dt.strftime('%H:%M')}"
+        if (today - timedelta(days=1)).date() == dt.date():
+            return f"Yesterday {dt.strftime('%H:%M')}"
+        return dt.strftime("%b %d")
+
+    def _group_messages_by_sender(self, messages: list) -> list[Conversation]:
+        """Group messages by sender and sort conversations by latest activity."""
+        conversations: dict[str, Conversation] = {}
+        for msg in messages:
+            sender = msg.get("sender_username")
+            if not sender:
+                continue
+            ts = msg.get("timestamp", 0)
+            if sender not in conversations:
+                conversations[sender] = Conversation(
+                    sender_username=sender,
+                    last_timestamp=ts,
+                    unread_count=0,
+                    message_list=[],
+                )
+            conversations[sender].message_list.append(msg)
+            if ts > conversations[sender].last_timestamp:
+                conversations[sender].last_timestamp = ts
+        return sorted(conversations.values(), key=lambda conv: conv.last_timestamp, reverse=True)
+
+    def get_conversations_list(self) -> list[Conversation]:
+        """Fetch all messages and return grouped conversations with unread counts."""
+        msg_response = _request_json(
+            "POST",
+            f"{self.base_url}/messages/fetch?unseen_only=false&offset=0&limit=10000",
+            token=self.state.session_token,
+        )
+        if msg_response.get("status_code") != 200:
+            return []
+        data_payload = msg_response.get("data") or {}
+        messages = data_payload.get("messages") or []
+        conversations = self._group_messages_by_sender(messages)
+        for conv in conversations:
+            conv.unread_count = sum(
+                1 for m in conv.message_list if m.get("age", 0) >= 0 and not m.get("is_delivered", True)
+            )
+        return conversations
+
     def generate_local_public_key(self) -> str:
         """generate local public key"""
         #TODO: do actual key generation
