@@ -137,7 +137,6 @@ def friend_management_menu(client_obj: ClientAPI):
         
         else:
             print("Invalid choice. Please enter 1-8.")
-##### End of JJ #####
 
 
 def main():
@@ -247,7 +246,7 @@ def main():
                     nonce = message.get("nonce")
                     timestamp = message.get("timestamp")
                     age = message.get("age")
-                    counter = message.get("counter")
+                    counter = message.get("counter", 0)
                     print(f"From: {sender_name}")
                     print(f"To: {receiver_name}")
                     try:
@@ -319,13 +318,7 @@ def main():
 
         elif action == '2':
             print("===========Fetch Messages===========\n")
-            fetch_all_message = normalize_choice(
-                input("Enter 'y' to fetch all messages, 'n' to fetch unseen messages: ")
-            )
-            if fetch_all_message == 'y':
-                res = client_obj.fetch_messages(unseen_only=False)
-            else:
-                res = client_obj.fetch_messages(unseen_only=True)
+            res = client_obj.fetch_messages()
             print_message_from_response(res)
 
         elif action == '3':

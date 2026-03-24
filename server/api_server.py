@@ -246,7 +246,6 @@ def format_message_object(msgs) -> dict:
 
 @app.post("/messages/fetch")
 def fetch_messages(
-        unseen_only: bool = False,
         offset: int = 0,
         limit: int = 10000,
         user: User = Depends(get_current_user),
@@ -271,29 +270,12 @@ def fetch_messages(
         for m in unseen_msgs:
             m.is_delivered = True
 
-        if unseen_only:
-            result_messages = format_message_object(unseen_msgs)
-            response_data = {
-                "messages": result_messages,
-                "unseen_count": unseen_messages_count,
-            }
-        #=========unseen_only=false=========
-        else:
-            paginated_msgs = session.exec(
-                        select(Message)
-                        .where(Message.receiver_id == user.user_id)
-                        .offset(offset)
-                        .limit(limit)
-                    ).all()
-            result_messages = format_message_object(paginated_msgs)
-            
-            response_data = {
-                "messages": result_messages,
-                "unseen_count": unseen_messages_count,
-                "offset": offset,
-                "limit": limit,
-            }
-
+        result_messages = format_message_object(unseen_msgs)
+        response_data = {
+            "messages": result_messages,
+            "unseen_count": unseen_messages_count,
+        }
+        
         remove_expired_messages(session)
         session.commit()
         return {"data": response_data}

@@ -87,7 +87,7 @@ class ClientAPI:
         """Fetch all messages and return grouped conversations with unread counts."""
         msg_response = _request_json(
             "POST",
-            f"{self.base_url}/messages/fetch?unseen_only=false&offset=0&limit=10000",
+            f"{self.base_url}/messages/fetch/offset=0&limit=10000",
             token=self.state.session_token,
         )
         if msg_response.get("status_code") != 200:
@@ -255,82 +255,21 @@ class ClientAPI:
         }, token=self.state.session_token)
 
 
-    def fetch_messages(self, unseen_only: bool = False)->dict:
+    def fetch_messages(self)->dict:
         """fetch messages from server (all or unseen)"""
-        url_param = "true" if unseen_only else "false"
-        
+
         msg_response = _request_json(
             "POST", 
-            f"{self.base_url}/messages/fetch?unseen_only={url_param}",
+            f"{self.base_url}/messages/fetch",
             token=self.state.session_token
         )
-        
         if msg_response.get("status_code") == 200:
-            data_payload = msg_response.get("data") or {}
-            self.show_messages(data_payload)
-            
+            count = msg_response.get("data", {}).get("unseen_count", 0)
+            if count > 0:
+                msg_response["message"] = f"Successfully fetched! You have {count} new unseen messages. Go to 'View messages' to read them."
+            else:
+                msg_response["message"] = "You are up to date! No new messages."
         return msg_response
-
-    def show_messages(self, data_payload: dict) -> None:
-        """
-        show messages, decrypt ciphertext and nonce
-        """
-        if not data_payload:
-            print("No messages to show")
-            return
-        print("===========Messages===========\n")
-        messages = data_payload.get("messages") or []
-        unseen_count = data_payload.get("unseen_count")
-        print(f"Total messages: {len(messages)}")
-        if unseen_count is None:
-            print("Total unseen: N/A")
-        else:
-            print(f"Total unseen: {unseen_count}")
-        for message in messages:
-            sender = message.get('sender_username')
-            receiver = message.get('receiver_username')
-            ciphertext = message.get('ciphertext')
-            nonce = message.get('nonce')
-            timestamp = message.get('timestamp')
-            age = message.get('age')
-            counter = message.get('counter')
-
-            print(f"From: {sender}")
-            print(f"To: {receiver}")
-            try:
-                sent_time = datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d %H:%M:%S')
-                if age < 0:
-                    print(f"Message: [Expired Message]")
-                    print(f"Sent at {sent_time}, expired {abs(age)} seconds ago")
-                elif ciphertext and nonce and ciphertext != "0":
-                    if sender not in self.crypto_manager.session_keys:
-                        peer_res = self.get_public_key_by_username(sender)
-                        if peer_res.get("status_code") == 200:
-                            self.crypto_manager.derive_shared_key(peer_res['public_key'], sender)
-
-                    plaintext, is_replay = self.crypto_manager.decrypt(
-                        b64_ciphertext=ciphertext, 
-                        b64_nonce=nonce, 
-                        sender_username=sender, 
-                        recipient_username=receiver, 
-                        counter=counter,
-                    )
-
-                    if is_replay:
-                        print(f"Message: [History] {plaintext}")
-                    else:
-                        print(f"Message: [New]{plaintext}")
-                    
-                    print(f"Sent at {sent_time}")
-                    print(f"Expires in {age} seconds" if age > 0 else "")
-                else:
-                    print(f"Message: [Error] Missing ciphertext or nonce")
-            except Exception as e:
-                print(f"Message: [Decryption Failed - Data corrupted or wrong key]")
-                print(f"Ciphertext: {ciphertext}")  #TODO: for debug, delete later
-        print("--------------------------------")
-        print("===========End of Messages===========\n")
-
 
 def _request_json(
         method: str,
