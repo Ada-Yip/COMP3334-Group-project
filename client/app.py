@@ -260,14 +260,19 @@ def main():
                                 peer_res = client_obj.get_public_key_by_username(sender_name)
                                 if peer_res.get("status_code") == 200:
                                     client_obj.crypto_manager.derive_shared_key(peer_res['public_key'], sender_name)
-                            plaintext = client_obj.crypto_manager.decrypt(
+                            plaintext, is_replay = client_obj.crypto_manager.decrypt(
                                 b64_ciphertext=ciphertext, 
                                 b64_nonce=nonce, 
                                 sender_username=sender_name, 
                                 recipient_username=receiver_name, 
                                 counter=counter,
                             )
-                            print(f"Message: {plaintext}")
+
+                            if is_replay:
+                                print(f"Message: [History] {plaintext}")
+                            else:
+                                print(f"Message: [New] {plaintext}")
+                            
                             print(f"Sent at {sent_time}")
                             print(f"Expires in {age} seconds" if age > 0 else "Message never expires")
                         else:

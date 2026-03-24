@@ -308,14 +308,19 @@ class ClientAPI:
                         if peer_res.get("status_code") == 200:
                             self.crypto_manager.derive_shared_key(peer_res['public_key'], sender)
 
-                    plaintext = self.crypto_manager.decrypt(
+                    plaintext, is_replay = self.crypto_manager.decrypt(
                         b64_ciphertext=ciphertext, 
                         b64_nonce=nonce, 
                         sender_username=sender, 
                         recipient_username=receiver, 
                         counter=counter,
                     )
-                    print(f"Message: {plaintext}")
+
+                    if is_replay:
+                        print(f"Message: [History] {plaintext}")
+                    else:
+                        print(f"Message: [New]{plaintext}")
+                    
                     print(f"Sent at {sent_time}")
                     print(f"Expires in {age} seconds" if age > 0 else "")
                 else:
