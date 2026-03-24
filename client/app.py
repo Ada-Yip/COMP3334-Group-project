@@ -7,7 +7,7 @@ import time
 from datetime import datetime
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from config import SERVER_URL, SHARED_SECRET
+from config import SERVER_URL
 from api_client import ClientAPI, ClientState
 
 
