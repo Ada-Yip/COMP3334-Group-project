@@ -237,7 +237,7 @@ class ClientAPI:
             peer_res = self.get_public_key_by_username(receiver_username)
             self.crypto_manager.derive_shared_key(peer_res['public_key'], receiver_username)
 
-        current_counter = self.state.next_local_message_id
+        current_counter = self.crypto_manager.get_and_increment_message_id()
         self.state.next_local_message_id += 1
 
         encrypted_text, actual_nonce = self.crypto_manager.encrypt(

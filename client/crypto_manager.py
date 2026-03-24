@@ -18,24 +18,38 @@ class CryptoManager:
         self.session_keys = {}  #store keys for each peer
         self.peer_counters = {} #store counters for each peer
         self.current_username = None
+        self.next_local_message_id = 1
 
     def initialize_for_user(self, username: str):
+        #avoid re-initialization
+        if self.current_username == username and self.private_key is not None:
+            return
+            
         self.current_username = username
-        priv_key, counters = load_client_data(username)
+        priv_key, counters, next_message_id = load_client_data(username)
 
         if priv_key:
             self.private_key = priv_key
             self.peer_counters = counters
+            self.next_local_message_id = next_message_id
         else:
             self.private_key = x25519.X25519PrivateKey.generate()
             self.peer_counters = {}
-            save_client_data(self.current_username, self.private_key, self.peer_counters)
+            save_client_data(self.current_username, self.private_key, self.peer_counters, self.next_local_message_id)
         
         self.public_key = self.private_key.public_key()
         
     def get_local_public_key_b64(self) -> str:
         key_bytes = self.public_key.public_bytes_raw()
         return base64.b64encode(key_bytes).decode('utf-8')
+
+    def get_and_increment_message_id(self) -> int:
+        """get current counter and increment it"""
+        current = self.next_local_message_id
+        self.next_local_message_id += 1
+        save_client_data(self.current_username, self.private_key, self.peer_counters, self.next_local_message_id)
+        return current
+
     
     def derive_shared_key(self, peer_public_key_b64: str, peer_username: str) -> bytes:
         """ECDH to derive shared key"""
@@ -105,7 +119,7 @@ class CryptoManager:
             plaintext = aesgcm.decrypt(nonce, ciphertext, ad_bytes) #verify integrity
 
             self.peer_counters[sender_username] = counter
-            save_client_data(self.current_username, self.private_key, self.peer_counters)
+            save_client_data(self.current_username, self.private_key, self.peer_counters, self.next_local_message_id)
             
             return plaintext.decode('utf-8')
         except Exception as e:
