@@ -59,11 +59,7 @@ def main():
             print_message_from_response(secret)
             return
         else:
-            data = secret.get('data') or {}
-            secret_key = data.get('secret_key')
-            if not secret_key:
-                print(f"Error: OTP secret not found in server response: {data}")
-                return
+            secret_key = secret.get('data').get('secret_key')
     except Exception as e:
         print(f"Error: {e}")
         return

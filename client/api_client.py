@@ -321,12 +321,13 @@ class ClientAPI:
             token=self.state.session_token
         )
 
-    def verify_otp(self) -> bool:
+    def verify_otp(self, input_code: int) -> bool:
         """verify OTP secret for current user"""
         response = _request_json(
             "POST",
             f"{self.base_url}/OTP/verify",
-            {"secret": self.state.session_token},
+            {"secret": self.state.session_token,
+             "input_code": input_code},
             token=self.state.session_token
         )
         return response.get("status_code") == 200

@@ -294,7 +294,29 @@ def main():
                 res = client_obj.login(input_username, input_password)
                 print_message_from_response(res)
                 if res.get("status_code") == 200:
+                    if res.get('data').get('have_OTP'):
+                        print("============OTP required for this account============")
+                        while True:
+                            try:
+                                otp_input = input("Enter your OTP code: ")
+                                if otp_input == "exit":
+                                    print("Exiting...\n")
+                                    res = client_obj.logout()
+                                    print_message_from_response(res)
+                                    return
+                                otp_code = int(otp_input)
+                            except Exception as e:
+                                print(f"Invalid OTP code. Please try again. Error: {e}")
+                                continue
+                            otp_res = client_obj.verify_otp(otp_code)
+                            if otp_res:
+                                print("Login successful with OTP verification")
+                                break
+                            else:
+                                print("Login failed with OTP verification")
+
                     login_register = False
+
                     break
                 else:
                     print("Login failed, please try again")
@@ -353,6 +375,7 @@ def main():
                     break
                 except Exception:
                     print("Invalid input! Please enter a valid integer.")
+                    continue
             res = client_obj.send_message(recipient_username, message, duration)
             print_message_from_response(res)
             continue

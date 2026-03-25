@@ -68,7 +68,7 @@ def register(
         password_input = req.password.strip()
         public_key_input = req.public_key.strip()
         password_hashed = hash_password(password_input)
-        new_user = User(username_db=username_input, password_hash=password_hashed, public_key_db=public_key_input)
+        new_user = User(username_db=username_input, password_hash=password_hashed, public_key_db=public_key_input, have_OTP=False)
 
         #check if user already exists
         existing_user = session.exec(select(User).where(User.username_db == username_input)).first()
@@ -133,7 +133,8 @@ def login(
             "data": {
                 "token": token, 
                 "user_id": current_user.user_id, 
-                "username": current_user.username_db
+                "username": current_user.username_db,
+                "have_OTP": current_user.have_OTP
                 }
             }
 
@@ -558,6 +559,7 @@ def setup_otp(
         key = pyotp.random_base32()
         otp_entry = OTP(user_id=current_user.user_id, secret_key=key)
         session.add(otp_entry)
+        current_user.have_OTP = True
         session.commit()
         logger.info(f"OTP set up successfully for user {current_user.username_db}")
         return {"message": "OTP set up successfully"}
@@ -619,10 +621,15 @@ def get_otp(
         logger.exception("Error retrieving OTP")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+class VerifyOTPReq(BaseModel):
+    input_code: int
+
 @app.post("/OTP/verify")
 def verify_otp(
+        req: VerifyOTPReq,
         current_user: User = Depends(get_current_user),
         session: Session = Depends(get_session),
+
 ):
     try:
         if (session.exec(
@@ -633,7 +640,7 @@ def verify_otp(
             select(OTP).where(OTP.user_id == current_user.user_id)).first()
         secret = getattr(otp_entry, "secret_key", None)
         totp = pyotp.TOTP(secret)
-        if totp.verify(totp.now()):
+        if totp.verify(req.input_code):
             logger.info(f"OTP verified successfully for user {current_user.username_db}")
             return {"message": "OTP verified successfully"}
         else:

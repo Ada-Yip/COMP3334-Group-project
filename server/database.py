@@ -70,6 +70,7 @@ class User(SQLModel, table=True):
     username_db: str = Field(index=True)  #uniqueness is restricted by register api
     password_hash: str
     public_key_db: str = Field(default="")
+    have_OTP: bool = Field(default=False)
 
 
 class UserSession(SQLModel, table=True):
