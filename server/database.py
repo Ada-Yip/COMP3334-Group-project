@@ -11,6 +11,7 @@ from fastapi import HTTPException, Depends
 from sqlmodel import select
 import time
 from sqlalchemy import text
+import hashlib
 from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ engine = create_engine(
 def init_db():
     SQLModel.metadata.create_all(engine)
     normalize_session_expiry_storage()
+    normalize_user_verification_code_storage()
 
 
 def normalize_session_expiry_storage() -> None:
@@ -60,6 +62,38 @@ def normalize_session_expiry_storage() -> None:
         logger.warning(f"Session expiry migration skipped: {e}")
 
 
+def compute_verification_code_from_public_key(public_key: str) -> str:
+    """Create a stable 12-digit verification code from user's public key string."""
+    if not public_key:
+        return ""
+    digest = hashlib.sha256(public_key.strip().encode("utf-8")).digest()
+    numeric_value = int.from_bytes(digest[:8], "big") % (10 ** 12)
+    return f"{numeric_value:012d}"
+
+
+def normalize_user_verification_code_storage() -> None:
+    try:
+        with Session(engine) as session:
+            try:
+                session.exec(text("ALTER TABLE User ADD COLUMN verification_code_db TEXT DEFAULT ''"))
+                session.commit()
+            except Exception:
+                session.rollback()
+
+            users = session.exec(select(User)).all()
+            changed = False
+            for user in users:
+                if not getattr(user, "verification_code_db", "") and user.public_key_db:
+                    user.verification_code_db = compute_verification_code_from_public_key(user.public_key_db)
+                    session.add(user)
+                    changed = True
+
+            if changed:
+                session.commit()
+    except Exception as e:
+        logger.warning(f"Verification code migration skipped: {e}")
+
+
 # ======= Tables =======
 class User(SQLModel, table=True):
     """
@@ -70,6 +104,7 @@ class User(SQLModel, table=True):
     username_db: str = Field(index=True)  #uniqueness is restricted by register api
     password_hash: str
     public_key_db: str = Field(default="")
+    verification_code_db: str = Field(default="")
     have_OTP: bool = Field(default=False)
 
 

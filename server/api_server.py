@@ -18,6 +18,7 @@ from .database import (
     get_valid_user_by_username,
     check_password,
     get_valid_session_from_db, remove_expired_messages, OTP,
+    compute_verification_code_from_public_key,
 )
 from sqlalchemy import or_
 from pydantic import BaseModel
@@ -55,6 +56,7 @@ class RegisterReq(BaseModel):
     username: str
     password: str
     public_key: str
+    verification_code: str
 
 
 @app.post("/register")
@@ -67,8 +69,22 @@ def register(
         username_input = req.username.strip()
         password_input = req.password.strip()
         public_key_input = req.public_key.strip()
+        verification_code_input = req.verification_code.strip()
+        expected_verification_code = compute_verification_code_from_public_key(public_key_input)
+
+        if not verification_code_input.isdigit() or len(verification_code_input) != 12:
+            raise HTTPException(status_code=400, detail="Invalid verification code format")
+        if verification_code_input != expected_verification_code:
+            raise HTTPException(status_code=400, detail="Verification code does not match public key")
+
         password_hashed = hash_password(password_input)
-        new_user = User(username_db=username_input, password_hash=password_hashed, public_key_db=public_key_input, have_OTP=False)
+        new_user = User(
+            username_db=username_input,
+            password_hash=password_hashed,
+            public_key_db=public_key_input,
+            verification_code_db=verification_code_input,
+            have_OTP=False,
+        )
 
         #check if user already exists
         existing_user = session.exec(select(User).where(User.username_db == username_input)).first()
@@ -169,7 +185,31 @@ def get_user_public_key_by_username(
 ):
     """get user public key from database(from friend request)"""
     target_user = get_valid_user_by_username(username, session=session)
-    return {"public_key": target_user.public_key_db}    #TODO: add validation to key changes?
+    return {
+        "public_key": target_user.public_key_db,
+        "verification_code": target_user.verification_code_db,
+    }    #TODO: add validation to key changes?
+
+
+@app.get("/users/self/verification_code")
+def get_my_verification_code(
+        user: User = Depends(get_current_user),
+):
+    """get current user's own verification code"""
+    return {
+        "username": user.username_db,
+        "verification_code": user.verification_code_db,
+    }
+
+
+@app.get("/users/{username}/verification_code")
+def get_user_verification_code_by_username(
+        username: str,
+        session: Session = Depends(get_session),
+):
+    """get user verification code by username"""
+    target_user = get_valid_user_by_username(username, session=session)
+    return {"verification_code": target_user.verification_code_db}
 
 
 #=======Message API=======
@@ -405,6 +445,7 @@ def get_received_requests(
             result.append({
                 "id": r.id,
                 "from_username": from_user.username_db,
+                "from_verification_code": from_user.verification_code_db,
                 "created_at": r.created_at  ###
             })
     
@@ -430,6 +471,7 @@ def get_sent_requests(
             result.append({
                 "id": r.id,
                 "to_username": to_user.username_db,
+                "to_verification_code": to_user.verification_code_db,
                 "created_at": r.created_at
             })
     

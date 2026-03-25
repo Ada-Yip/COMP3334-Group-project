@@ -5,6 +5,7 @@ responsible for encryption
 import base64
 import os
 import json
+import hashlib
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.asymmetric import x25519
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -54,6 +55,14 @@ class CryptoManager:
     def get_local_public_key_b64(self) -> str:
         key_bytes = self.public_key.public_bytes_raw()
         return base64.b64encode(key_bytes).decode('utf-8')
+
+    def get_local_verification_code(self) -> str:
+        """Create a 12-digit verification code from local public key."""
+        """This is (R5)"""
+        public_key_b64 = self.get_local_public_key_b64().strip()
+        digest = hashlib.sha256(public_key_b64.encode("utf-8")).digest()
+        numeric_value = int.from_bytes(digest[:8], "big") % (10 ** 12)
+        return f"{numeric_value:012d}"
 
     def get_and_increment_message_id(self) -> int:
         """get current counter and increment it"""

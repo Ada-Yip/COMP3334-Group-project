@@ -134,8 +134,30 @@ class ClientAPI:
         """get public key from server by username"""
         return _request_json("GET", f"{self.base_url}/users/{username}/public_key", token=self.state.session_token)
 
+    def get_verification_code_by_username(self, username: str) -> dict:
+        """fetch the verification code from server by username"""
+        return _request_json("GET", f"{self.base_url}/users/{username}/verification_code", token=self.state.session_token)
+
+    def get_my_verification_code(self) -> dict:
+        """get current user's own verification code from server"""
+        response = _request_json("GET", f"{self.base_url}/users/self/verification_code", token=self.state.session_token)
+
+        #fallback for servers where dynamic /users/{username}/... route shadows /users/self/...
+        if (
+            response.get("status_code") == 404
+            and self.state.current_username
+            and "User not found" in str(response.get("detail", ""))
+        ):
+            return _request_json(
+                "GET",
+                f"{self.base_url}/users/{self.state.current_username}/verification_code",
+                token=self.state.session_token,
+            )
+
+        return response
+
     def get_user_name(self) -> str:
-        """get user name from server"""
+        """get username from server"""
         return self.state.current_username
 
     def get_user_id(self) -> int:
@@ -152,7 +174,8 @@ class ClientAPI:
         payload = {
             "username": username, 
             "password": password, 
-            "public_key": self.crypto_manager.get_local_public_key_b64()
+            "public_key": self.crypto_manager.get_local_public_key_b64(),
+            "verification_code": self.crypto_manager.get_local_verification_code(),
             }
         response = _request_json("POST", f"{self.base_url}/register", payload)
         if response.get("status_code") == 200:

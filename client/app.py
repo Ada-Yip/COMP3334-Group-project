@@ -49,6 +49,13 @@ def friend_management_menu(client_obj: ClientAPI):
             if to_username == client_obj.get_user_name():
                 print("You cannot send a friend request to yourself!")
                 continue
+
+            vc_res = client_obj.get_verification_code_by_username(to_username)
+            if vc_res.get("status_code") == 200:
+                print(f"User's verification code: {vc_res.get('verification_code', 'N/A')}")
+            else:
+                print_message_from_response(vc_res)
+
             res = client_obj.send_friend_request(to_username)
             print_message_from_response(res)
         
@@ -63,7 +70,11 @@ def friend_management_menu(client_obj: ClientAPI):
                     print("\n--- Received Friend Requests ---")
                     for req in requests:      ###
                         local_time = datetime.fromtimestamp(req['created_at'])
-                        print(f"ID: {req['id']} | From: {req['from_username']} | Sent: {local_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                        print(
+                            f"Request ID: {req['id']} | From: {req['from_username']} "
+                            f"| Verification Code: {req.get('from_verification_code', 'N/A')} "
+                            f"| Requested at: {local_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                        )
                     
                     action = input("\nEnter request ID to accept/decline (or 'q' to go back): ").strip()
                     if action != 'q':
@@ -94,7 +105,11 @@ def friend_management_menu(client_obj: ClientAPI):
                     print("\n--- Sent Friend Requests ---")
                     for req in requests:       ###
                         local_time = datetime.fromtimestamp(req['created_at'])
-                        print(f"ID: {req['id']} | To: {req['to_username']} | Sent: {local_time.strftime('%Y-%m-%d %H:%M:%S')}")
+                        print(
+                            f"Request ID: {req['id']} | To: {req['to_username']} "
+                            f"| Verification Code: {req.get('to_verification_code', 'N/A')} "
+                            f"| Sent at: {local_time.strftime('%Y-%m-%d %H:%M:%S')}"
+                        )
             else:
                 print_message_from_response(res)
         
@@ -358,8 +373,9 @@ def main():
         print("4) Setup OTP/Check OTP")
         print("5) Logout and exit")
         print("6) Exit without logout")
+        print("7) View my verification code")
 
-        action = normalize_choice(input("Choose 1/2/3/4/5: "))
+        action = normalize_choice(input("Choose 1/2/3/4/5/6/7: "))
 
         if action == '1':
             print("===========Send Message===========\n")
@@ -419,8 +435,18 @@ def main():
         elif action == '6':
             print("Exit without logout selected.")
             return
+
+        elif action == '7':
+            vc_res = client_obj.get_my_verification_code()
+            if vc_res.get("status_code") == 200:
+                print(
+                    f"Your verification code ({vc_res.get('username', client_obj.get_user_name())}): "
+                    f"{vc_res.get('verification_code', 'N/A')}"
+                )
+            else:
+                print_message_from_response(vc_res)
         else:
-            print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6.")
+            print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6, 7.")
 
 
 if __name__ == "__main__":
