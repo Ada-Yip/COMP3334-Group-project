@@ -29,7 +29,7 @@ def main():
     while login_register:
         print("========= Authenticator APP =========\n")
         print("Your input will be stripped of whitespace and case sensitivity")
-        print("You will need to Login to use this app\n")
+        print("You will need to login to use this app (this application is only for account with OTP setup)\n")
         while True:
             print("============Login============\n")
             input_username = input("Enter your username: ")

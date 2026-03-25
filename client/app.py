@@ -392,13 +392,24 @@ def main():
             if status.get("status_code") == 200:
                 print(f"You already setup OTP, current OTP is {pyotp.TOTP(status.get('data').get('secret_key')).now()}") #See Code for test, Can be deleted later
                 continue
-            res = client_obj.set_otp()
-            print_message_from_response(res)
-            if res.get("status_code") == 200:
-                print(f"You have setup the OTP for this account. You will need to use it in addition to password for login.")
+            print("==============OTP Setup===============\n")
+            print("You haven't setup OTP yet. Do you want to setup OTP now? (y/n): ")
+            option = normalize_choice(input("Choose y/n: "))
+            if option == "y":
+                res = client_obj.set_otp()
+                print_message_from_response(res)
+                if res.get("status_code") == 200:
+                    print(
+                        f"You have successfully setup the OTP for this account. You will need to use it in addition to password for login.")
+                else:
+                    print("OTP setup failed, please try again.")
+                continue
+            elif option == "n":
+                print("Returning to main menu.")
+                continue
             else:
-                print("OTP setup failed, please try again.")
-            continue
+                print("Invalid choice. Please enter 'y' or 'n'.")
+
         
         elif action == '5':
             res = client_obj.logout()

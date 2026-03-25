@@ -595,32 +595,6 @@ def get_key(
         logger.exception("Error retrieving OTP key")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
-@app.post("/OTP/get")
-def get_otp(
-        current_user: User = Depends(get_current_user),
-        session: Session = Depends(get_session),
-):
-    try:
-        if (session.exec(
-                select(OTP).where(OTP.user_id == current_user.user_id)
-        ).first()) is None:
-            raise HTTPException(status_code=404, detail="OTP not set up")
-        otp_entry = session.exec(
-            select(OTP).where(OTP.user_id == current_user.user_id)).first()
-        secret = getattr(otp_entry, "secret_key", None)
-        totp = pyotp.TOTP(secret)
-        logger.info(f"OTP retrieved successfully for user {current_user.username_db}")
-        return {"message": "OTP retrieved successfully",
-                "data":{"totp": totp.now()
-                        }
-                }
-    except HTTPException:
-        raise
-    except Exception:
-        session.rollback()
-        logger.exception("Error retrieving OTP")
-        raise HTTPException(status_code=500, detail="Internal Server Error")
-
 class VerifyOTPReq(BaseModel):
     input_code: int
 
