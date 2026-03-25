@@ -262,8 +262,7 @@ class ClientAPI:
             age: int,
     ) -> dict:
         """(R6)(R7) send message to server, responsible for handling key change detection"""
-        if receiver_username not in self.crypto_manager.session_keys:
-            peer_res = self.get_public_key_by_username(receiver_username)
+        peer_res = self.get_public_key_by_username(receiver_username)
             
         try:
             self.crypto_manager.derive_shared_key(peer_res['public_key'], receiver_username)
