@@ -102,12 +102,18 @@ class CryptoManager:
         counter: int
         ) -> tuple[str, int]:
         """(R8/R9) decrypt and verify integrity"""
-        key = self.session_keys.get(sender_username)
+
+        peer_username = sender_username if sender_username != self.current_username else recipient_username
+
+        key = self.session_keys.get(peer_username)
         if not key:
             raise ValueError("No session key for this sender")
 
-        last_seen_counter = self.peer_counters.get(sender_username, 0)
-        is_replay = counter <= last_seen_counter
+        last_seen_counter = self.peer_counters.get(peer_username, 0)
+        is_replay = False
+        if recipient_username == self.current_username:
+            last_seen_counter = self.peer_counters.get(sender_username, 0)
+            is_replay = counter <= last_seen_counter
 
         try:
             aesgcm = AESGCM(key)
@@ -117,12 +123,9 @@ class CryptoManager:
             ad_bytes = json.dumps(ad_dict, sort_keys=True).encode('utf-8')
             plaintext = aesgcm.decrypt(nonce, ciphertext, ad_bytes) #verify integrity
 
-            if not is_replay:
+            if sender_username != self.current_username:
                 self.peer_counters[sender_username] = counter
                 save_client_data(self.current_username, self.private_key, self.peer_counters, self.next_local_message_id)
-
-            self.peer_counters[sender_username] = counter
-            save_client_data(self.current_username, self.private_key, self.peer_counters, self.next_local_message_id)
             
             return plaintext.decode('utf-8'), is_replay
         except Exception as e:

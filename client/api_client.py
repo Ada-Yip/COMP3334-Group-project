@@ -53,7 +53,7 @@ class ClientAPI:
             ts = msg.get("timestamp", 0)
             if contact not in conversations:
                 conversations[contact] = Conversation(
-                    sender_username=contact,  # 這裡用 sender_username 欄位存對話對象名稱
+                    sender_username=contact,
                     last_timestamp=ts,
                     unread_count=0,
                     message_list=[],
@@ -126,7 +126,7 @@ class ClientAPI:
                 1 for m in conv.message_list 
                 if m.get("age", 0) >= 0 
                 and not m.get("is_delivered", True)
-                and m.get("sender_username") != self.state.current_username  # 只計算收到的未讀
+                and m.get("sender_username") != self.state.current_username
             )
         return conversations
 

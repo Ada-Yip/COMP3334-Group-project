@@ -261,6 +261,11 @@ def get_all_conversations(
             "offset": offset,
             "limit": limit,
         }
+
+        for msg in all_messages:
+            if msg.receiver_id == user.user_id:
+                msg.is_delivered = True
+                session.add(msg)
         remove_expired_messages(session)
         session.commit()
         return {"data": response_data}
