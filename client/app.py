@@ -163,7 +163,7 @@ def open_chat_room(client_obj: ClientAPI, partner_username: str):
         print(f"Showing messages {offset + 1} to {offset + len(paginated)} of {len(all_messages)}")
         print("--------------------------------\n")
         
-        for message in reversed(paginated):
+        for message in paginated:
             sender_name = message.get("sender_username")
             receiver_name = message.get("receiver_username")
             ciphertext = message.get("ciphertext")
