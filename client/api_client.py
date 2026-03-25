@@ -261,7 +261,7 @@ class ClientAPI:
             plaintext: str,
             age: int,
     ) -> dict:
-        """send message to server, responsible for handling key change detection"""
+        """(R6)(R7) send message to server, responsible for handling key change detection"""
         if receiver_username not in self.crypto_manager.session_keys:
             peer_res = self.get_public_key_by_username(receiver_username)
             
@@ -284,7 +284,7 @@ class ClientAPI:
         plaintext: str, 
         age: int,
     ) -> dict:
-        """send message to server, responsible for incrementing message id and encrypting message"""
+        """(R8) send message to server, responsible for incrementing message id and encrypting message"""
         current_counter = self.crypto_manager.get_and_increment_message_id()
         self.state.next_local_message_id += 1
 

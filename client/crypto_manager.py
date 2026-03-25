@@ -69,7 +69,7 @@ class CryptoManager:
 
     
     def derive_shared_key(self, peer_public_key_b64: str, peer_username: str, force_accept: bool = False) -> bytes:
-        """(R6)ECDH to derive shared key with Key Change Detection"""
+        """(R6)(R7)ECDH to derive shared key with Key Change Detection"""
         existing_key = self.known_keys.get(peer_username, None)
         if existing_key is not None and existing_key != peer_public_key_b64:
             if not force_accept:
