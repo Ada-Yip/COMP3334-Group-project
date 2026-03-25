@@ -118,6 +118,10 @@ class BlockedUser(SQLModel, table=True):
     user_id: int = Field(foreign_key="User.user_id", primary_key=True)
     blocked_user_id: int = Field(foreign_key="User.user_id", primary_key=True)
 
+class OTP(SQLModel, table=True):
+    __tablename__ = "OTP"
+    user_id: int = Field(foreign_key="User.user_id", primary_key=True)
+    secret_key: str = Field(default="")
 #======= User Session Utilities =======
 
 def compute_session_expires_at(ttl_seconds: int, now: Optional[int] = None) -> int:

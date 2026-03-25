@@ -1,3 +1,5 @@
+
+
 """
 api and enter point
 """
@@ -7,16 +9,17 @@ from sqlmodel import Session, select
 from .database import (
     User,
     Message,
-    FriendRequest,  
-    Friend,         
-    BlockedUser,     
+    FriendRequest,
+    Friend,
+    BlockedUser,
     init_db,
     get_session,
     get_valid_user_by_id,
     get_valid_user_by_username,
     check_password,
-    get_valid_session_from_db, remove_expired_messages,
+    get_valid_session_from_db, remove_expired_messages, OTP,
 )
+from sqlalchemy import or_
 from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from .security_service import (
@@ -27,6 +30,7 @@ from .security_service import (
     )
 import logging
 import time
+import pyotp
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
@@ -230,8 +234,45 @@ def send_message(
         logger.exception("Error sending message")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+@app.post("/messages/conversations")
+def get_all_conversations(
+        offset: int = 0,
+        limit: int = 10000,
+        user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
+):
+    """
+    Fetch all messages (sent and received) for viewing conversations.
+    This includes both sides of the conversation.
+    """
+    try:
+        all_messages = session.exec(
+            select(Message)
+            .where(
+                or_(Message.receiver_id == user.user_id, Message.sender_id == user.user_id)
+            )
+            .order_by(Message.timestamp.desc())
+            .offset(offset)
+            .limit(limit)
+        ).all()
+        result_messages = format_message_object(all_messages)
+        response_data = {
+            "messages": result_messages,
+            "offset": offset,
+            "limit": limit,
+        }
+        remove_expired_messages(session)
+        session.commit()
+        return {"data": response_data}
+    except Exception as e:
+        session.rollback()
+        logger.exception("Error fetching conversations")
+        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
+
+
+
 def format_message_object(msgs) -> dict:
-        """format message object to list of dictionaries, used only in fetch function"""
+        """format message object to list of dictionaries"""
         current_time = int(time.time())
         return [{
             "sender_username": m.sender_username_db,
@@ -243,49 +284,6 @@ def format_message_object(msgs) -> dict:
             "is_delivered": m.is_delivered,
             "counter": m.counter,
         } for m in msgs]
-
-@app.post("/messages/fetch")
-def fetch_messages(
-        offset: int = 0,
-        limit: int = 10000,
-        user: User = Depends(get_current_user),
-        session: Session = Depends(get_session),        
-):
-    """
-    Current user fetch messages from database.
-    If unseen_only is True, only fetch unseen messages.
-    Supports pagination with offset and limit parameters.
-    """
-    
-    try:
-        #=========unseen_only=true=========
-        unseen_msgs = session.exec(
-            select(Message).where(
-                Message.receiver_id == user.user_id,
-                Message.is_delivered == False
-            )
-        ).all()
-
-        unseen_messages_count = len(unseen_msgs)
-        for m in unseen_msgs:
-            m.is_delivered = True
-
-        result_messages = format_message_object(unseen_msgs)
-        response_data = {
-            "messages": result_messages,
-            "unseen_count": unseen_messages_count,
-        }
-        
-        remove_expired_messages(session)
-        session.commit()
-        return {"data": response_data}
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        session.rollback()
-        logger.exception("Error fetching messages")
-        raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
 #====================================Friend Request========================================
 class FriendRequestReq(BaseModel):
@@ -541,3 +539,104 @@ def unblock_user(
     session.delete(block)
     session.commit()
     return {"message": "User unblocked"}
+
+@app.post("/OTP/set")
+def setup_otp(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    try:
+        if (session.execute(
+                select(OTP).where(OTP.user_id == current_user.user_id)
+        ).first()):
+            raise HTTPException(status_code=400, detail="OTP already set up")
+        key = pyotp.random_base32()
+        otp_entry = OTP(user_id=current_user.user_id, secret_key=key)
+        session.add(otp_entry)
+        session.commit()
+        logger.info(f"OTP set up successfully for user {current_user.username_db}")
+        return {"message": "OTP set up successfully"}
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Error setting up OTP")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.post("/OTP/get-key")
+def get_key(
+    current_user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    try:
+        if (session.execute(
+                select(OTP).where(OTP.user_id == current_user.user_id)
+        ).first() is None):
+            raise HTTPException(status_code=404, detail="OTP not set up")
+        otp_entry = session.execute(
+            select(OTP).where(OTP.user_id == current_user.user_id)).first()
+        secret = getattr(otp_entry, "secret_key", None)
+        logger.info(f"OTP key retrieved successfully for user {current_user.username_db}")
+        return {"message": "OTP key retrieved successfully",
+                "data": {"secret_key": secret
+             }
+        }
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Error retrieving OTP key")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.post("/OTP/get")
+def get_otp(
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
+):
+    try:
+        if (session.execute(
+                select(OTP).where(OTP.user_id == current_user.user_id)
+        ).first()) is None:
+            raise HTTPException(status_code=404, detail="OTP not set up")
+        otp_entry = session.execute(
+            select(OTP).where(OTP.user_id == current_user.user_id)).first()
+        secret = getattr(otp_entry, "secret_key", None)
+        totp = pyotp.TOTP(secret)
+        logger.info(f"OTP retrieved successfully for user {current_user.username_db}")
+        return {"message": "OTP retrieved successfully",
+                "data":{"totp": totp.now()
+                        }
+                }
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Error retrieving OTP")
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.post("/OTP/verify")
+def verify_otp(
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
+):
+    try:
+        if (session.execute(
+            select(OTP).where(OTP.user_id == current_user.user_id)
+        )).first() is None:
+            raise HTTPException(status_code=404, detail="OTP not set up")
+        otp_entry = session.execute(
+            select(OTP).where(OTP.user_id == current_user.user_id)).first()
+        secret = getattr(otp_entry, "secret_key", None)
+        totp = pyotp.TOTP(secret)
+        if totp.verify(totp.now()):
+            logger.info(f"OTP verified successfully for user {current_user.username_db}")
+            return {"message": "OTP verified successfully"}
+        else:
+            logger.error(f"OTP verification failed for user {current_user.username_db}")
+            raise HTTPException(status_code=400, detail="Invalid OTP")
+    except HTTPException:
+        raise
+    except Exception:
+        session.rollback()
+        logger.exception("Error verifying OTP")
+        raise HTTPException(status_code=500, detail="Internal Server Error")

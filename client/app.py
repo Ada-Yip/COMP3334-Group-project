@@ -227,12 +227,12 @@ def main():
                 continue
 
             selected_conv = conversations[choice_idx]
-            sender = selected_conv.sender_username
+            partner = selected_conv.sender_username
             all_messages = sorted(selected_conv.message_list, key=lambda m: m.get("timestamp", 0), reverse=True)
             offset = 0
             limit = 10
             while True:
-                print(f"\n===========Messages from {sender}===========\n")
+                print(f"\n===========Conversation with {partner}===========\n")
                 paginated = all_messages[offset:offset + limit]
                 if not paginated:
                     print("No more messages.\n")
@@ -291,13 +291,12 @@ def main():
     while True:
         print("\n===========What would you like to do?===========")
         print("1) Send a message")
-        print("2) Fetch messages")
-        print("3) View messages")
-        print("4) Friend management")
-        print("5) Logout and exit")
-        print("6) Exit without logout")
+        print("2) View messages")
+        print("3) Friend management")
+        print("4) Logout and exit")
+        print("5) Exit without logout")
 
-        action = normalize_choice(input("Choose 1/2/3/4/5/6: "))
+        action = normalize_choice(input("Choose 1/2/3/4/5: "))
 
         if action == '1':
             print("===========Send Message===========\n")
@@ -317,28 +316,23 @@ def main():
             print_message_from_response(res)
 
         elif action == '2':
-            print("===========Fetch Messages===========\n")
-            res = client_obj.fetch_messages()
-            print_message_from_response(res)
-
-        elif action == '3':
             view_messages(client_obj)
 
-        elif action == '4':
+        elif action == '3':
             # Friend management submenu
             friend_management_menu(client_obj)
 
-        elif action == '5':
+        elif action == '4':
             res = client_obj.logout()
             print_message_from_response(res)
             return
         
-        elif action == '6':
+        elif action == '5':
             print("Exit without logout selected.")
             return
 
         else:
-            print("Invalid choice. Please enter 1, 2, 3, 4, 5 or 6.")
+            print("Invalid choice. Please enter 1, 2, 3, 4, 5.")
 
 
 if __name__ == "__main__":
