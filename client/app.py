@@ -352,6 +352,7 @@ def main():
                     print("Invalid input! Please enter a valid integer.")
             res = client_obj.send_message(recipient_username, message, duration)
             print_message_from_response(res)
+            continue
 
         elif action == '2':
             view_messages(client_obj)

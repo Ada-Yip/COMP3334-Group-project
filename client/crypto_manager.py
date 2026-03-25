@@ -11,6 +11,9 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from local_storage import load_client_data, save_client_data
 
+class KeyChangeError(Exception):
+    pass
+
 class CryptoManager:
     def __init__(self):
         self.private_key = None
@@ -19,6 +22,7 @@ class CryptoManager:
         self.peer_counters = {} #store counters for each peer
         self.current_username = None
         self.next_local_message_id = 1
+        self.known_keys = {}
 
     def initialize_for_user(self, username: str):
         #avoid re-initialization
@@ -26,16 +30,24 @@ class CryptoManager:
             return
             
         self.current_username = username
-        priv_key, counters, next_message_id = load_client_data(username)
+        priv_key, counters, next_message_id, known_keys = load_client_data(username)
 
         if priv_key:
             self.private_key = priv_key
             self.peer_counters = counters
             self.next_local_message_id = next_message_id
+            self.known_keys = known_keys
         else:
             self.private_key = x25519.X25519PrivateKey.generate()
             self.peer_counters = {}
-            save_client_data(self.current_username, self.private_key, self.peer_counters, self.next_local_message_id)
+            self.known_keys = {}
+            save_client_data(
+                username=self.current_username, 
+                private_key=self.private_key, 
+                counters=self.peer_counters, 
+                next_message_id=self.next_local_message_id, 
+                known_keys=self.known_keys
+            )
         
         self.public_key = self.private_key.public_key()
         
@@ -47,12 +59,30 @@ class CryptoManager:
         """get current counter and increment it"""
         current = self.next_local_message_id
         self.next_local_message_id += 1
-        save_client_data(self.current_username, self.private_key, self.peer_counters, self.next_local_message_id)
+        save_client_data(
+            self.current_username, 
+            self.private_key, 
+            counters=self.peer_counters, 
+            next_message_id=self.next_local_message_id
+        )
         return current
 
     
-    def derive_shared_key(self, peer_public_key_b64: str, peer_username: str) -> bytes:
-        """ECDH to derive shared key"""
+    def derive_shared_key(self, peer_public_key_b64: str, peer_username: str, force_accept: bool = False) -> bytes:
+        """(R6)ECDH to derive shared key with Key Change Detection"""
+        existing_key = self.known_keys.get(peer_username, None)
+        if existing_key is not None and existing_key != peer_public_key_b64:
+            if not force_accept:
+                raise KeyChangeError(f"WARNING: The identity key for {peer_username} has changed!")
+        else: #first time seeing this user / key change accepted
+            self.known_keys[peer_username] = peer_public_key_b64
+            save_client_data(
+                username=self.current_username, 
+                private_key=self.private_key, 
+                known_keys=self.known_keys
+            )
+
+
         peek_pk_bytes = base64.b64decode(peer_public_key_b64)
         peer_pk = x25519.X25519PublicKey.from_public_bytes(peek_pk_bytes)
         shared_key = self.private_key.exchange(peer_pk)
@@ -67,6 +97,7 @@ class CryptoManager:
         self.session_keys[peer_username] = derived_key
         return derived_key
     
+
     def encrypt(
         self, plaintext: str, 
         recipient_username: str, 
@@ -81,7 +112,7 @@ class CryptoManager:
         aesgcm = AESGCM(key)
         nonce = os.urandom(12)
         
-        # (R8) build Associated Data (AD)
+        # build Associated Data (AD)
         ad_dict = {
             "s": sender_username,
             "r": recipient_username,
@@ -125,7 +156,13 @@ class CryptoManager:
 
             if sender_username != self.current_username:
                 self.peer_counters[sender_username] = counter
-                save_client_data(self.current_username, self.private_key, self.peer_counters, self.next_local_message_id)
+                save_client_data(
+                    username=self.current_username, 
+                    private_key=self.private_key, 
+                    counters=self.peer_counters, 
+                    next_message_id=self.next_local_message_id, 
+                    known_keys=self.known_keys
+                )
             
             return plaintext.decode('utf-8'), is_replay
         except Exception as e:

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from urllib import error, request
 from datetime import datetime, timedelta
 from config import SERVER_URL
-from crypto_manager import CryptoManager
+from crypto_manager import CryptoManager, KeyChangeError
 
 
 @dataclass
@@ -261,11 +261,30 @@ class ClientAPI:
             plaintext: str,
             age: int,
     ) -> dict:
-        """send message to server"""
+        """send message to server, responsible for handling key change detection"""
         if receiver_username not in self.crypto_manager.session_keys:
             peer_res = self.get_public_key_by_username(receiver_username)
+            
+        try:
             self.crypto_manager.derive_shared_key(peer_res['public_key'], receiver_username)
+            return self.send_message_handling(receiver_username, plaintext, age)
+        except KeyChangeError as e:
+            print(f"\n[SECURITY ALERT] {e}")
+            print("This means the user might have reinstalled the app, OR someone is trying to intercept your connection!")
+            confirm = input("Do you still want to trust this new key and send the message? (y/n): ").strip().lower()
+            if confirm == 'y':
+                self.crypto_manager.derive_shared_key(peer_res['public_key'], receiver_username, force_accept = True)
+                return self.send_message_handling(receiver_username, plaintext, age)
+            else:
+                raise ValueError("Key change detected for user: " + receiver_username)
 
+    def send_message_handling(
+        self, 
+        receiver_username: str, 
+        plaintext: str, 
+        age: int,
+    ) -> dict:
+        """send message to server, responsible for incrementing message id and encrypting message"""
         current_counter = self.crypto_manager.get_and_increment_message_id()
         self.state.next_local_message_id += 1
 

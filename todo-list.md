@@ -85,18 +85,18 @@ message time.
 Encryption 
 
 ### 6.3 E2EE 1:1 Messaging: @
-- [ ] All Finished
+- [x] All Finished
 requirements:
-- [ ] (R7) Secure session establishment 
+- [x] (R7) Secure session establishment 
 You must implement a secure method for two users to establish shared secrets for messaging. 
 This course does not require a specific design such as X3DH; you may choose any protocol that 
 is appropriate under the HbC server model. Your report must describe the protocol, its 
 assumptions, and the security properties it provides (and does not provide). 
-- [ ] (R8) Message encryption and authentication 
+- [x] (R8) Message encryption and authentication 
 • Each message must be protected with authenticated encryption (or an equivalent encrypt-then-MAC design) to provide confidentiality and integrity. 
 • Bind relevant metadata using authenticated associated data (AD), such as sender/receiver 
 identifiers, conversation ID, and message counters, so tampering is detected. 
-- [ ] (R9) Replay protection / de-duplication 
+- [x] (R9) Replay protection / de-duplication 
 • The receiver must detect and ignore replayed or duplicated ciphertext messages (within a 
 reasonable window defined by your design).
 
@@ -124,7 +124,7 @@ requirements:
 - [ ] (R5) Fingerprint / verification UI 
 • Show a user-visible fingerprint (or safety number) for each contact/device identity key. 
 • Allow the user to mark a contact as “verified” (local state is acceptable). 
-- [ ] (R6) Key change detection 
+- [X] (R6) Key change detection 
 • If a contact’s identity key changes, the client must warn the user. 
 • Define your policy (block until re-verified, or allow with warning) and justify it. 
 
