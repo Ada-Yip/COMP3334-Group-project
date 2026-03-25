@@ -59,16 +59,20 @@ def main():
             print_message_from_response(secret)
             return
         else:
-            secret = secret.get('data')['secret_key']
+            data = secret.get('data') or {}
+            secret_key = data.get('secret_key')
+            if not secret_key:
+                print(f"Error: OTP secret not found in server response: {data}")
+                return
     except Exception as e:
         print(f"Error: {e}")
         return
 
-    totp = pyotp.TOTP(secret)
+    totp = pyotp.TOTP(secret_key)
 
     last_code = ""
 
-    print("=========OTP Code Generator=========")
+    print("=========OTP Code==========")
 
     while True:
         current_code = totp.now()

@@ -574,11 +574,11 @@ def get_key(
     session: Session = Depends(get_session),
 ):
     try:
-        if (session.execute(
+        if (session.exec(
                 select(OTP).where(OTP.user_id == current_user.user_id)
         ).first() is None):
             raise HTTPException(status_code=404, detail="OTP not set up")
-        otp_entry = session.execute(
+        otp_entry = session.exec(
             select(OTP).where(OTP.user_id == current_user.user_id)).first()
         secret = getattr(otp_entry, "secret_key", None)
         logger.info(f"OTP key retrieved successfully for user {current_user.username_db}")
@@ -599,11 +599,11 @@ def get_otp(
         session: Session = Depends(get_session),
 ):
     try:
-        if (session.execute(
+        if (session.exec(
                 select(OTP).where(OTP.user_id == current_user.user_id)
         ).first()) is None:
             raise HTTPException(status_code=404, detail="OTP not set up")
-        otp_entry = session.execute(
+        otp_entry = session.exec(
             select(OTP).where(OTP.user_id == current_user.user_id)).first()
         secret = getattr(otp_entry, "secret_key", None)
         totp = pyotp.TOTP(secret)
@@ -625,11 +625,11 @@ def verify_otp(
         session: Session = Depends(get_session),
 ):
     try:
-        if (session.execute(
+        if (session.exec(
             select(OTP).where(OTP.user_id == current_user.user_id)
         )).first() is None:
             raise HTTPException(status_code=404, detail="OTP not set up")
-        otp_entry = session.execute(
+        otp_entry = session.exec(
             select(OTP).where(OTP.user_id == current_user.user_id)).first()
         secret = getattr(otp_entry, "secret_key", None)
         totp = pyotp.TOTP(secret)

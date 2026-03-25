@@ -10,6 +10,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from config import SERVER_URL
 from api_client import ClientAPI, ClientState
 
+import pyotp
+
 
 def print_message_from_response(response: dict):
     """print message from response"""
@@ -331,8 +333,9 @@ def main():
         print("1) Send a message")
         print("2) View messages")
         print("3) Friend management")
-        print("4) Logout and exit")
-        print("5) Exit without logout")
+        print("4) Setup OTP/Check OTP")
+        print("5) Logout and exit")
+        print("6) Exit without logout")
 
         action = normalize_choice(input("Choose 1/2/3/4/5: "))
 
@@ -361,16 +364,29 @@ def main():
             friend_management_menu(client_obj)
 
         elif action == '4':
+            print("===============OTP Status================\n")
+            status = client_obj.get_otp_key()
+            if status.get("status_code") == 200:
+                print(f"You already setup OTP, current OTP is {pyotp.TOTP(status.get('data').get('secret_key')).now()}") #See Code for test, Can be deleted later
+                continue
+            res = client_obj.set_otp()
+            print_message_from_response(res)
+            if res.get("status_code") == 200:
+                print(f"You have setup the OTP for this account. You will need to use it in addition to password for login.")
+            else:
+                print("OTP setup failed, please try again.")
+            continue
+        
+        elif action == '5':
             res = client_obj.logout()
             print_message_from_response(res)
             return
-        
-        elif action == '5':
+
+        elif action == '6':
             print("Exit without logout selected.")
             return
-
         else:
-            print("Invalid choice. Please enter 1, 2, 3, 4, 5.")
+            print("Invalid choice. Please enter 1, 2, 3, 4, 5, 6.")
 
 
 if __name__ == "__main__":
