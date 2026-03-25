@@ -33,13 +33,10 @@ def main():
         while True:
             print("============Login============\n")
             input_username = input("Enter your username: ")
-            if input_username == "exit":  # Add Magic Word to exit the application at any point during login/registration
-                print("Returning to login/registration choice.")
-                break
             input_password = input("Enter your password: ")
-            if input_password == "exit":
-                print("Returning to login/registration choice.")
-                break
+            if input_password == "retry":                   #Add Magic Word retry to restarting whole login process
+                print("Restarting login process.")
+                continue
             state = ClientState()
             client_obj = ClientAPI(state=state)
             res = client_obj.login(input_username, input_password)

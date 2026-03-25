@@ -108,7 +108,7 @@ requirements:
 • Users can register with a unique identifier (e.g., username or email). 
 • Passwords are stored using a modern password hashing scheme with a per-user salt. 
 • Basic password policy and rate limiting for registration/login. 
-- [ ] (R2) Login with Password + OTP 
+- [x] (R2) Login with Password + OTP 
 • Support login with password plus a second factor (OTP). 
 • Sessions/tokens must expire and be bound to the authenticated user. 
 - [x] (R3) Logout / session invalidation 
