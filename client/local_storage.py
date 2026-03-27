@@ -53,3 +53,47 @@ def load_client_data(username: str) -> tuple:
     next_message_id = data.get("next_message_id", 1)
     known_keys = data.get("known_keys", {})
     return private_key, counters, next_message_id, known_keys
+
+### Verified contacts management ###
+def get_verified_contacts_file(username: str) -> str:
+    """Get the file path for verified contacts."""
+    os.makedirs(LOCAL_STORAGE_DIR, exist_ok=True)
+    return os.path.join(LOCAL_STORAGE_DIR, f"{username}_verified_contacts.json")
+
+
+def save_verified_contacts(username: str, verified_contacts: set):
+    """Save the set of verified contact usernames to local file."""
+    filename = get_verified_contacts_file(username)
+    data = {"verified_contacts": list(verified_contacts)}
+    with open(filename, 'w') as f:
+        json.dump(data, f)
+
+
+def load_verified_contacts(username: str) -> set:
+    """Load the set of verified contact usernames from local file."""
+    filename = get_verified_contacts_file(username)
+    if not os.path.exists(filename):
+        return set()
+    with open(filename, 'r') as f:
+        data = json.load(f)
+    return set(data.get("verified_contacts", []))
+
+
+def add_verified_contact(username: str, contact_username: str):
+    """Add a contact to the verified list."""
+    verified = load_verified_contacts(username)
+    verified.add(contact_username)
+    save_verified_contacts(username, verified)
+
+
+def remove_verified_contact(username: str, contact_username: str):
+    """Remove a contact from the verified list."""
+    verified = load_verified_contacts(username)
+    verified.discard(contact_username)
+    save_verified_contacts(username, verified)
+
+
+def is_contact_verified(username: str, contact_username: str) -> bool:
+    """Check if a contact is verified."""
+    verified = load_verified_contacts(username)
+    return contact_username in verified
