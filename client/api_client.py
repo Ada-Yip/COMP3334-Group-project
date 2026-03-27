@@ -67,6 +67,7 @@ class ClientAPI:
         self.state: ClientState = state or ClientState(base_url=base_url)
         self.base_url: str = self.state.base_url
         self.crypto_manager = CryptoManager()
+        self.verified_contacts = set()  # will be loaded after login  JJ
 
     #===============Utility Functions========================================
     def calc_time_ago(self, timestamp: int) -> str:
@@ -193,6 +194,7 @@ class ClientAPI:
             self.state.current_username = data["username"]
             self.state.session_token = data["token"]
             self.crypto_manager.initialize_for_user(username)   #check if private key and counters are loaded from local storage
+            self.load_verified_contacts()    # JJ : load verified contacts after login
         return response
 
     def logout(self) -> dict:
@@ -358,6 +360,39 @@ class ClientAPI:
             token=self.state.session_token
         )
         return response.get("status_code") == 200
+    
+    # ========== JJ: Verified contacts management ==========
+    def load_verified_contacts(self):
+        """Load verified contacts for current user."""
+        if self.state.current_username:
+            from local_storage import load_verified_contacts
+            self.verified_contacts = load_verified_contacts(self.state.current_username)
+    
+    def mark_contact_verified(self, contact_username: str):
+        """Mark a contact as verified."""
+        if self.state.current_username:
+            from local_storage import add_verified_contact
+            add_verified_contact(self.state.current_username, contact_username)
+            self.verified_contacts.add(contact_username)
+            return True
+        return False
+    
+    def unmark_contact_verified(self, contact_username: str):
+        """Remove verified status from a contact."""
+        if self.state.current_username:
+            from local_storage import remove_verified_contact
+            remove_verified_contact(self.state.current_username, contact_username)
+            self.verified_contacts.discard(contact_username)
+            return True
+        return False
+    
+    def is_contact_verified(self, contact_username: str) -> bool:
+        """Check if a contact is verified."""
+        return contact_username in self.verified_contacts
+    
+    def get_verified_contacts(self) -> list:
+        """Get list of verified contacts."""
+        return list(self.verified_contacts)
 
 
 def _request_json(
