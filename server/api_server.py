@@ -220,6 +220,7 @@ class SendMsgReq(BaseModel):
     ciphertext: str
     nonce: str
     age: int
+    timestamp: int
     counter: int
 
 
@@ -260,7 +261,7 @@ def send_message(
             receiver_id=receiver.user_id, receiver_username_db=receiver.username_db,
             ciphertext=req.ciphertext,
             nonce=req.nonce,
-            timestamp=int(time.time()),
+            timestamp=req.timestamp,
             age=req.age,
             counter=req.counter,
             )
@@ -326,7 +327,8 @@ def format_message_object(msgs) -> dict:
             "ciphertext": m.ciphertext if m.age == 0 or m.age - (current_time - m.timestamp) >= 0 else "0",
             "nonce": m.nonce,
             "timestamp": m.timestamp,
-            "age": m.age - (int(time.time()) - m.timestamp) if m.age > 0 else 0,
+            "age": m.age,
+            "expires_in": m.age - (current_time - m.timestamp) if m.age > 0 else None,
             "is_delivered": m.is_delivered,
             "counter": m.counter,
         } for m in msgs]

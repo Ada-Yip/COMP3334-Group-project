@@ -111,7 +111,9 @@ class CryptoManager:
         self, plaintext: str, 
         recipient_username: str, 
         sender_username: str, 
-        counter: int
+        counter: int,
+        ttl_seconds: int,
+        sent_timestamp: int,
         ) -> tuple[str, str]:
         """(R8) use authenticated encryption (AEAD) and bind metadata"""
         key = self.session_keys.get(recipient_username)
@@ -125,7 +127,9 @@ class CryptoManager:
         ad_dict = {
             "s": sender_username,
             "r": recipient_username,
-            "c": counter
+            "c": counter,
+            "a": ttl_seconds,
+            "t": sent_timestamp,
         }
         ad_bytes = json.dumps(ad_dict, sort_keys=True).encode('utf-8')
         
@@ -139,7 +143,9 @@ class CryptoManager:
         b64_nonce: str, 
         sender_username: str, 
         recipient_username: str, 
-        counter: int
+        counter: int,
+        ttl_seconds: int,
+        sent_timestamp: int,
         ) -> tuple[str, int]:
         """(R8/R9) decrypt and verify integrity"""
 
@@ -159,7 +165,13 @@ class CryptoManager:
             aesgcm = AESGCM(key)
             ciphertext = base64.b64decode(b64_ciphertext)
             nonce = base64.b64decode(b64_nonce)
-            ad_dict = {"s": sender_username, "r": recipient_username, "c": counter}
+            ad_dict = {
+                "s": sender_username,
+                "r": recipient_username,
+                "c": counter,
+                "a": ttl_seconds,
+                "t": sent_timestamp,
+            }
             ad_bytes = json.dumps(ad_dict, sort_keys=True).encode('utf-8')
             plaintext = aesgcm.decrypt(nonce, ciphertext, ad_bytes) #verify integrity
 

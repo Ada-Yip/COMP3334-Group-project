@@ -186,7 +186,8 @@ def open_chat_room(client_obj: ClientAPI, partner_username: str):
             ciphertext = message.get("ciphertext")
             nonce = message.get("nonce")
             timestamp = message.get("timestamp")
-            age = message.get("age")
+            ttl_seconds = message.get("age", 0)
+            expires_in = message.get("expires_in")
             counter = message.get("counter", 0)
             is_delivered = message.get("is_delivered", False)
 
@@ -197,9 +198,9 @@ def open_chat_room(client_obj: ClientAPI, partner_username: str):
             print(f"To: {receiver_name}")
             try:
                 sent_time = datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d %H:%M:%S")
-                if age < 0:
+                if expires_in is not None and expires_in < 0:
                     print("Message: [Expired Message]")
-                    print(f"Sent at {sent_time}, expired {abs(age)} seconds ago")
+                    print(f"Sent at {sent_time}, expired {abs(expires_in)} seconds ago")
                 elif ciphertext and nonce and ciphertext != "0":    
                     if peer_name not in client_obj.crypto_manager.session_keys: 
                         peer_res = client_obj.get_public_key_by_username(peer_name)
@@ -212,6 +213,8 @@ def open_chat_room(client_obj: ClientAPI, partner_username: str):
                         sender_username=sender_name, 
                         recipient_username=receiver_name, 
                         counter=counter,
+                        ttl_seconds=ttl_seconds,
+                        sent_timestamp=timestamp,
                     )
 
                     if sender_name == current_username:
@@ -222,7 +225,7 @@ def open_chat_room(client_obj: ClientAPI, partner_username: str):
                         print(f"Message: {received_status} {plaintext}")
                         
                     print(f"Sent at {sent_time}")
-                    print(f"Expires in {age} seconds" if age > 0 else "Message never expires")
+                    print(f"Expires in {expires_in} seconds" if expires_in is not None else "Message never expires")
                 else:
                     print("Message: [Error] Missing ciphertext or nonce")
             except Exception as e:

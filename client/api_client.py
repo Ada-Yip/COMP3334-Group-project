@@ -124,7 +124,7 @@ class ClientAPI:
         for conv in conversations:
             conv.unread_count = sum(
                 1 for m in conv.message_list 
-                if m.get("age", 0) >= 0 
+                if (m.get("expires_in") is None or m.get("expires_in", -1) >= 0)
                 and not m.get("is_delivered", True)
                 and m.get("sender_username") != self.state.current_username
             )
@@ -309,18 +309,22 @@ class ClientAPI:
         """(R8) send message to server, responsible for incrementing message id and encrypting message"""
         current_counter = self.crypto_manager.get_and_increment_message_id()
         self.state.next_local_message_id += 1
+        sent_timestamp = int(time.time())
 
         encrypted_text, actual_nonce = self.crypto_manager.encrypt(
             plaintext=plaintext,
             recipient_username=receiver_username,
             sender_username=self.state.current_username,
-            counter=current_counter
+            counter=current_counter,
+            ttl_seconds=age,
+            sent_timestamp=sent_timestamp,
         )
         return _request_json("POST", f"{self.base_url}/messages/send", {
             "receiver_username": receiver_username,
             "ciphertext": encrypted_text,
             "nonce": actual_nonce,
             "age": age,
+            "timestamp": sent_timestamp,
             "counter": current_counter,
         }, token=self.state.session_token)
 
