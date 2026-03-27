@@ -39,9 +39,12 @@ def friend_management_menu(client_obj: ClientAPI):
         print("5) Remove friend")
         print("6) Block a user")
         print("7) Unblock a user")
-        print("8) Back to main menu")
+        print("8) View friend's verification code")
+        print("9) Mark friend as verified")
+        print("10) Unmark friend as verified")
+        print("11) Back to main menu")
         
-        choice = normalize_choice(input("Choose 1-8: "))
+        choice = normalize_choice(input("Choose 1-11: "))
         
         if choice == '1':
             # Send friend request
@@ -123,7 +126,13 @@ def friend_management_menu(client_obj: ClientAPI):
                 else:
                     print(f"\n--- Friends List (Total: {len(friends)}) ---")
                     for friend in friends:
-                        print(f"- {friend['username']}")
+                        friend_username = friend['username']
+                        # ========== NEW: Check verification status ==========
+                        if client_obj.is_contact_verified(friend_username):
+                            print(f"- {friend_username} ✓ VERIFIED")
+                        else:
+                            print(f"- {friend_username}")
+
             else:
                 print_message_from_response(res)
         
@@ -149,10 +158,51 @@ def friend_management_menu(client_obj: ClientAPI):
             print_message_from_response(res)
         
         elif choice == '8':
+            # View friend's verification code
+            friend_username = input("Enter friend's username to view verification code: ").strip()
+            vc_res = client_obj.get_verification_code_by_username(friend_username)
+            if vc_res.get("status_code") == 200:
+                print(f"\n=========== Verification Code for {friend_username} ===========")
+                print(f"Code: {vc_res.get('verification_code', 'N/A')}")
+                print("\n[INFO] Use this code to verify your friend's identity out-of-band (in person, via phone, etc.)")
+                print("If the code matches what your friend shows you, the connection is secure.")
+            else:
+                print_message_from_response(vc_res)
+
+
+        elif choice == '9':
+            # Mark friend as verified
+            friend_username = input("Enter friend's username to mark as verified: ").strip()
+            
+            # Verify they are actually friends first
+            friends_res = client_obj.get_friends()
+            if friends_res.get("status_code") == 200:
+                friends = friends_res.get("friends", [])
+                friend_exists = any(f['username'] == friend_username for f in friends)
+                if not friend_exists:
+                    print(f"{friend_username} is not your friend. You can only verify friends.")
+                else:
+                    if client_obj.mark_contact_verified(friend_username):
+                        print(f"[SUCCESS] {friend_username} has been marked as verified.")
+                        print("A verified checkmark will appear next to their name in the friends list.")
+                    else:
+                        print("[ERROR] Could not mark as verified.")
+            else:
+                print_message_from_response(friends_res)
+        
+        elif choice == '10':
+            # Unmark friend as verified
+            friend_username = input("Enter friend's username to unmark as verified: ").strip()
+            if client_obj.unmark_contact_verified(friend_username):
+                print(f"[SUCCESS] {friend_username} has been unmarked as verified.")
+            else:
+                print("[ERROR] Could not unmark as verified.")
+
+        elif choice == '11':
             break
         
         else:
-            print("Invalid choice. Please enter 1-8.")
+            print("Invalid choice. Please enter 1-11.")
 
 
 def open_chat_room(client_obj: ClientAPI, partner_username: str):
