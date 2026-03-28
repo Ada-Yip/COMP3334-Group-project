@@ -38,6 +38,7 @@ class CryptoManager:
             self.peer_counters = counters
             self.next_local_message_id = next_message_id
             self.known_keys = known_keys
+
         else:
             self.private_key = x25519.X25519PrivateKey.generate()
             self.peer_counters = {}
@@ -72,7 +73,8 @@ class CryptoManager:
             self.current_username, 
             self.private_key, 
             counters=self.peer_counters, 
-            next_message_id=self.next_local_message_id
+            next_message_id=self.next_local_message_id,
+            known_keys=self.known_keys 
         )
         return current
 
@@ -80,17 +82,30 @@ class CryptoManager:
     def derive_shared_key(self, peer_public_key_b64: str, peer_username: str, force_accept: bool = False) -> bytes:
         """(R6)(R7)ECDH to derive shared key with Key Change Detection"""
         existing_key = self.known_keys.get(peer_username, None)
+
         if existing_key is not None and existing_key != peer_public_key_b64:
             if not force_accept:
                 raise KeyChangeError(f"WARNING: The identity key for {peer_username} has changed!")
-        else: #first time seeing this user / key change accepted
-            self.known_keys[peer_username] = peer_public_key_b64
-            save_client_data(
-                username=self.current_username, 
-                private_key=self.private_key, 
-                known_keys=self.known_keys
-            )
+            else: #first time seeing this user / key change accepted
+                self.known_keys[peer_username] = peer_public_key_b64
+                save_client_data(
+                    username=self.current_username, 
+                    private_key=self.private_key,
+                    counters=self.peer_counters,
+                    next_message_id=self.next_local_message_id, 
+                    known_keys=self.known_keys
+                )
 
+        else:
+            if existing_key is None:
+                self.known_keys[peer_username] = peer_public_key_b64
+                save_client_data(
+                    username=self.current_username, 
+                    private_key=self.private_key, 
+                    counters=self.peer_counters,
+                    next_message_id=self.next_local_message_id, 
+                    known_keys=self.known_keys
+                )
 
         peek_pk_bytes = base64.b64decode(peer_public_key_b64)
         peer_pk = x25519.X25519PublicKey.from_public_bytes(peek_pk_bytes)
