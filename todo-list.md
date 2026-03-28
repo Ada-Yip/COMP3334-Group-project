@@ -116,12 +116,12 @@ requirements:
 
 
 ### 6.2 Identity & Key Management: @
-- [ ] All Finished
+- [x] All Finished
 requirements:
-- [ ] (R4) Per-device identity keypair 
+- [x] (R4) Per-device identity keypair 
 • Each client generates and stores a long-term identity keypair locally. 
 • The server stores only the public key(s) needed for others to initiate secure sessions. 
-- [ ] (R5) Fingerprint / verification UI 
+- [x] (R5) Fingerprint / verification UI 
 • Show a user-visible fingerprint (or safety number) for each contact/device identity key. 
 • Allow the user to mark a contact as “verified” (local state is acceptable). 
 - [X] (R6) Key change detection 
