@@ -194,6 +194,28 @@ class ClientAPI:
             self.state.current_username = data["username"]
             self.state.session_token = data["token"]
             self.crypto_manager.initialize_for_user(username)   #check if private key and counters are loaded from local storage
+            # ========== NEW CODE: Check if local public key differs from server ==========
+            local_public_key = self.crypto_manager.get_local_public_key_b64()
+        
+            # Fetch current public key from server
+            server_key_res = self.get_public_key_by_username(username)
+        
+            if server_key_res.get("status_code") == 200:
+                server_public_key = server_key_res.get("public_key")
+                if local_public_key != server_public_key:
+                    print(f"[INFO] Your local public key has changed. Updating server...")
+                    
+                    # Update server with new public key
+                    update_res = _request_json(
+                        "PUT",
+                        f"{self.base_url}/users/{username}/public_key",
+                        {"public_key": local_public_key},
+                        token=self.state.session_token
+                    )
+                    if update_res.get("status_code") == 200:
+                        print("[SUCCESS] Public key updated on server")
+                    else:
+                        print("[WARNING] Could not update public key on server")
             self.load_verified_contacts()    # JJ : load verified contacts after login
         return response
 
