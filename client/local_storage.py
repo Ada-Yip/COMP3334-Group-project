@@ -18,12 +18,21 @@ def _get_local_data_path(username: str) -> str:
 def save_client_data(
     username: str, 
     private_key: x25519.X25519PrivateKey, 
-    counters: Optional[dict] = {}, 
+    counters: Optional[dict] = None, 
     next_message_id: Optional[int] = 1, 
-    known_keys: Optional[dict] = {}):
+    known_keys: Optional[dict] = None
+    ):
+
+    # Handle None defaults
+    if counters is None:
+        counters = {}
+    if known_keys is None:
+        known_keys = {}
+
     """store private key and counters to local file"""
     os.makedirs(LOCAL_STORAGE_DIR, exist_ok=True)
     filename = _get_local_data_path(username)
+
     priv_bytes = private_key.private_bytes(
         encoding=serialization.Encoding.Raw,
         format=serialization.PrivateFormat.Raw,
@@ -35,18 +44,21 @@ def save_client_data(
         "next_message_id": next_message_id,
         "known_keys": known_keys
     }
+
     with open(filename, 'w') as f:
         json.dump(data, f)
+
 
 def load_client_data(username: str) -> tuple:
     """load private key and counters from local file"""
     filename = _get_local_data_path(username)
+
     if not os.path.exists(filename):
         return None, None, 1, {}
     
     with open(filename, 'r') as f:
         data = json.load(f)
-        
+
     priv_bytes = base64.b64decode(data["private_key_b64"])
     private_key = x25519.X25519PrivateKey.from_private_bytes(priv_bytes)
     counters = data.get("counters", {})
