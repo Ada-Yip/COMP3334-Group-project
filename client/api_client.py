@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import secrets
 import time
 from dataclasses import dataclass, field
 from urllib import error, request
@@ -23,6 +22,7 @@ class ClientState:
     next_local_message_id: int = 1
     seen_message_ids: set[int] = field(default_factory=set)
 
+
 @dataclass
 class Conversation:
     """Represents a conversation with one contact."""
@@ -30,7 +30,6 @@ class Conversation:
     last_timestamp: int
     unread_count: int
     message_list: list = field(default_factory=list)
-
 
 
 class ClientAPI:
@@ -69,7 +68,7 @@ class ClientAPI:
         self.crypto_manager = CryptoManager()
         self.verified_contacts = set()  # will be loaded after login  JJ
 
-    #===============Utility Functions========================================
+    #  ===============Utility Functions========================================
     def calc_time_ago(self, timestamp: int) -> str:
         """Convert unix timestamp to human-readable 'time ago' format."""
         now = int(time.time())
@@ -124,7 +123,7 @@ class ClientAPI:
         conversations = self._group_messages_by_contact(messages)
         for conv in conversations:
             conv.unread_count = sum(
-                1 for m in conv.message_list 
+                1 for m in conv.message_list
                 if (m.get("expires_in") is None or m.get("expires_in", -1) >= 0)
                 and not m.get("is_delivered", True)
                 and m.get("sender_username") != self.state.current_username
@@ -137,17 +136,18 @@ class ClientAPI:
 
     def get_verification_code_by_username(self, username: str) -> dict:
         """fetch the verification code from server by username"""
-        return _request_json("GET", f"{self.base_url}/users/{username}/verification_code", token=self.state.session_token)
+        return _request_json("GET", f"{self.base_url}/users/{username}/verification_code",
+                             token=self.state.session_token)
 
     def get_my_verification_code(self) -> dict:
         """get current user's own verification code from server"""
         response = _request_json("GET", f"{self.base_url}/users/self/verification_code", token=self.state.session_token)
 
-        #fallback for servers where dynamic /users/{username}/... route shadows /users/self/...
+        #  fallback for servers where dynamic /users/{username}/... route shadows /users/self/...
         if (
-            response.get("status_code") == 404
-            and self.state.current_username
-            and "User not found" in str(response.get("detail", ""))
+                response.get("status_code") == 404
+                and self.state.current_username
+                and "User not found" in str(response.get("detail", ""))
         ):
             return _request_json(
                 "GET",
@@ -165,19 +165,19 @@ class ClientAPI:
         """get user id from server"""
         return self.state.current_user_id
 
-    #===============API Functions==============================================
+    #  ===============API Functions==============================================
 
     def register_user(self, username: str, password: str) -> dict:
         """register user to server"""
 
-        self.crypto_manager.initialize_for_user(username)   #generate private key and save to local storage
+        self.crypto_manager.initialize_for_user(username)  # generate private key and save to local storage
 
         payload = {
-            "username": username, 
-            "password": password, 
+            "username": username,
+            "password": password,
             "public_key": self.crypto_manager.get_local_public_key_b64(),
             "verification_code": self.crypto_manager.get_local_verification_code(),
-            }
+        }
         response = _request_json("POST", f"{self.base_url}/register", payload)
         if response.get("status_code") == 200:
             data = response.get("data")
@@ -185,7 +185,7 @@ class ClientAPI:
             self.state.current_username = data["username"]
         return response
 
-    def login(self, username: str, password: str) -> dict:  
+    def login(self, username: str, password: str) -> dict:
         payload = {"username": username, "password": password}
         response = _request_json("POST", f"{self.base_url}/login", payload)
         if response.get("status_code") == 200:
@@ -193,18 +193,19 @@ class ClientAPI:
             self.state.current_user_id = data["user_id"]
             self.state.current_username = data["username"]
             self.state.session_token = data["token"]
-            self.crypto_manager.initialize_for_user(username)   #check if private key and counters are loaded from local storage
+            self.crypto_manager.initialize_for_user(
+                username)  # check if private key and counters are loaded from local storage
             # ========== NEW CODE: Check if local public key differs from server ==========
             local_public_key = self.crypto_manager.get_local_public_key_b64()
-        
+
             # Fetch current public key from server
             server_key_res = self.get_public_key_by_username(username)
-        
+
             if server_key_res.get("status_code") == 200:
                 server_public_key = server_key_res.get("public_key")
                 if local_public_key != server_public_key:
                     print(f"[INFO] Your local public key has changed. Updating server...")
-                    
+
                     # Update server with new public key
                     update_res = _request_json(
                         "PUT",
@@ -216,7 +217,7 @@ class ClientAPI:
                         print("[SUCCESS] Public key updated on server")
                     else:
                         print("[WARNING] Could not update public key on server")
-            self.load_verified_contacts()    # JJ : load verified contacts after login
+            self.load_verified_contacts()  # JJ : load verified contacts after login
         return response
 
     def logout(self) -> dict:
@@ -229,7 +230,7 @@ class ClientAPI:
             print("You have been logged out successfully")
         return response
 
-    #====================================Friend Request========================================
+    #  ====================================Friend Request========================================
 
     def respond_friend_request(self, request_id: int, action: str) -> dict:
         """Respond to a pending friend request."""
@@ -248,7 +249,7 @@ class ClientAPI:
             {"to_username": to_username},
             token=self.state.session_token
         )
-    
+
     def get_received_requests(self) -> dict:
         """Get all pending friend requests received by current user."""
         return _request_json(
@@ -300,7 +301,7 @@ class ClientAPI:
             token=self.state.session_token
         )
 
-#====================================Message========================================
+    #  ====================================Message========================================
 
     def send_message(
             self,
@@ -310,25 +311,26 @@ class ClientAPI:
     ) -> dict:
         """(R6)(R7) send message to server, responsible for handling key change detection"""
         peer_res = self.get_public_key_by_username(receiver_username)
-            
+
         try:
             self.crypto_manager.derive_shared_key(peer_res['public_key'], receiver_username)
             return self.send_message_handling(receiver_username, plaintext, age)
         except KeyChangeError as e:
             print(f"\n[SECURITY ALERT] {e}")
-            print("This means the user might have reinstalled the app, OR someone is trying to intercept your connection!")
+            print(
+                "This means the user might have reinstalled the app, OR someone is trying to intercept your connection!")
             confirm = input("Do you still want to trust this new key and send the message? (y/n): ").strip().lower()
             if confirm == 'y':
-                self.crypto_manager.derive_shared_key(peer_res['public_key'], receiver_username, force_accept = True)
+                self.crypto_manager.derive_shared_key(peer_res['public_key'], receiver_username, force_accept=True)
                 return self.send_message_handling(receiver_username, plaintext, age)
             else:
                 raise ValueError("Key change detected for user: " + receiver_username)
 
     def send_message_handling(
-        self, 
-        receiver_username: str, 
-        plaintext: str, 
-        age: int,
+            self,
+            receiver_username: str,
+            plaintext: str,
+            age: int,
     ) -> dict:
         """(R8) send message to server, responsible for incrementing message id and encrypting message"""
         current_counter = self.crypto_manager.get_and_increment_message_id()
@@ -362,7 +364,6 @@ class ClientAPI:
         )
         return response
 
-
     def get_otp_key(self) -> dict:
         """get OTP key for current user"""
         return _request_json(
@@ -382,14 +383,14 @@ class ClientAPI:
             token=self.state.session_token
         )
         return response.get("status_code") == 200
-    
+
     # ========== JJ: Verified contacts management ==========
     def load_verified_contacts(self):
         """Load verified contacts for current user."""
         if self.state.current_username:
             from local_storage import load_verified_contacts
             self.verified_contacts = load_verified_contacts(self.state.current_username)
-    
+
     def mark_contact_verified(self, contact_username: str):
         """Mark a contact as verified."""
         if self.state.current_username:
@@ -398,7 +399,7 @@ class ClientAPI:
             self.verified_contacts.add(contact_username)
             return True
         return False
-    
+
     def unmark_contact_verified(self, contact_username: str):
         """Remove verified status from a contact."""
         if self.state.current_username:
@@ -407,11 +408,11 @@ class ClientAPI:
             self.verified_contacts.discard(contact_username)
             return True
         return False
-    
+
     def is_contact_verified(self, contact_username: str) -> bool:
         """Check if a contact is verified."""
         return contact_username in self.verified_contacts
-    
+
     def get_verified_contacts(self) -> list:
         """Get list of verified contacts."""
         return list(self.verified_contacts)
@@ -444,7 +445,7 @@ def _request_json(
             body = response.read().decode("utf-8")
             parsed = json.loads(body) if body else {}
             if isinstance(parsed, dict):
-                return {"status_code": response.status, **parsed}  #return unpacked dictionary
+                return {"status_code": response.status, **parsed}  # return unpacked dictionary
             return {"status_code": response.status, "data": parsed}
     except error.HTTPError as exc:
         body = exc.read().decode("utf-8")
