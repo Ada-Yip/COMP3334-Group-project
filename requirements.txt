@@ -6,7 +6,6 @@ sqlmodel==0.0.37
 sqlalchemy==2.0.48
 cryptography==46.0.5
 pydantic==2.12.5
-charset-normalizer==3.4.6
 bcrypt==5.0.0
 pyotp==2.9.0
 
