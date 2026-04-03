@@ -1,10 +1,8 @@
-
-
 """
 api and enter point
 """
-from datetime import datetime, timezone 
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Request
+from fastapi.responses import JSONResponse
 from sqlmodel import Session, select
 from .database import (
     User,
@@ -25,12 +23,14 @@ from pydantic import BaseModel
 from contextlib import asynccontextmanager
 from .security_service import (
     get_current_user,
-    hash_password, 
+    hash_password,
     verify_password,
     create_user_session,
-    )
+)
 import logging
 import time
+from collections import deque
+from threading import Lock
 import pyotp
 
 logger = logging.getLogger(__name__)
@@ -47,6 +47,83 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan, title="EE2E Server")
+
+# Per-client rate limiter state: max 10 requests per second, 60s cooldown on violation.
+RATE_LIMIT_MAX_REQUESTS = 10
+RATE_LIMIT_WINDOW_SECONDS = 1
+RATE_LIMIT_COOLDOWN_SECONDS = 60
+_rate_limit_lock = Lock()
+_client_request_times = {}
+_client_cooldowns = {}
+
+
+def _get_client_key(request: Request) -> str:
+    """Identify a client by bearer token when present, otherwise by source IP."""
+    auth_header = request.headers.get("authorization", "").strip()
+    if auth_header.startswith("Bearer "):
+        token = auth_header.split(" ", 1)[1].strip()
+        if token:
+            return f"token:{token}"
+
+    forwarded_for = request.headers.get("x-forwarded-for", "").strip()
+    if forwarded_for:
+        return f"ip:{forwarded_for.split(',')[0].strip()}"
+
+    client_host = request.client.host if request.client else "unknown"
+    return f"ip:{client_host}"
+
+
+def _cleanup_rate_limiter_state(now_ts: float) -> None:
+    """Drop expired cooldowns and stale client queues to keep in-memory state bounded."""
+    cooldown_keys = [k for k, until in _client_cooldowns.items() if until <= now_ts]
+    for key in cooldown_keys:
+        _client_cooldowns.pop(key, None)
+
+    stale_cutoff = now_ts - RATE_LIMIT_WINDOW_SECONDS
+    empty_clients = []
+    for key, ts_queue in _client_request_times.items():
+        while ts_queue and ts_queue[0] <= stale_cutoff:
+            ts_queue.popleft()
+        if not ts_queue:
+            empty_clients.append(key)
+    for key in empty_clients:
+        _client_request_times.pop(key, None)
+
+
+@app.middleware("http")
+async def enforce_client_rate_limit(request: Request, call_next):
+    now_ts = time.time()
+    client_key = _get_client_key(request)
+
+    with _rate_limit_lock:
+        _cleanup_rate_limiter_state(now_ts)
+
+        blocked_until = _client_cooldowns.get(client_key)
+        if blocked_until and blocked_until > now_ts:
+            retry_after = max(1, int(blocked_until - now_ts))
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Too many requests. Try again later.", "retry_after": retry_after},
+                headers={"Retry-After": str(retry_after)},
+            )
+
+        req_queue = _client_request_times.setdefault(client_key, deque())
+        cutoff = now_ts - RATE_LIMIT_WINDOW_SECONDS
+        while req_queue and req_queue[0] <= cutoff:
+            req_queue.popleft()
+
+        if len(req_queue) >= RATE_LIMIT_MAX_REQUESTS:
+            cooldown_until = now_ts + RATE_LIMIT_COOLDOWN_SECONDS
+            _client_cooldowns[client_key] = cooldown_until
+            _client_request_times.pop(client_key, None)
+            return JSONResponse(
+                status_code=429,
+                content={"detail": "Rate limit exceeded. Cooldown applied for 60 seconds.",
+                         "retry_after": RATE_LIMIT_COOLDOWN_SECONDS},
+                headers={"Retry-After": str(RATE_LIMIT_COOLDOWN_SECONDS)},
+            )
+
+        req_queue.append(now_ts)
 
 
 # --- API endpoint ---
@@ -113,9 +190,11 @@ def register(
         "data": {"user_id": new_user.user_id, "username": username_input},
     }
 
+
 class LoginReq(BaseModel):
     username: str
     password: str
+
 
 @app.post("/login")
 def login(
@@ -145,14 +224,15 @@ def login(
         session.rollback()
         logger.exception("Error logging in")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    return {"message": "Login successful", 
+    return {"message": "Login successful",
             "data": {
-                "token": token, 
-                "user_id": current_user.user_id, 
+                "token": token,
+                "user_id": current_user.user_id,
                 "username": current_user.username_db,
                 "have_OTP": current_user.have_OTP
-                }
             }
+            }
+
 
 @app.post("/logout")
 def logout(
@@ -178,6 +258,7 @@ def logout(
         logger.exception("Error logging out")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
 @app.get("/users/{username}/public_key")
 def get_user_public_key_by_username(
         username: str,
@@ -188,7 +269,7 @@ def get_user_public_key_by_username(
     return {
         "public_key": target_user.public_key_db,
         "verification_code": target_user.verification_code_db,
-    }    #TODO: add validation to key changes?
+    }  #TODO: add validation to key changes?
 
 
 @app.get("/users/self/verification_code")
@@ -228,14 +309,13 @@ class SendMsgReq(BaseModel):
 def send_message(
         req: SendMsgReq,
         user: User = Depends(get_current_user),
-        session: Session = Depends(get_session),
-)->dict:
+        session: Session = Depends(get_session), ) -> dict:
     """send message to database"""
     try:
         #check if receiver exists
         receiver = req.receiver_username.strip()
         receiver = get_valid_user_by_username(username=receiver, session=session)
-        
+
         # ========== FRIEND AND BLOCK CHECKS ==========
         # Check if receiver has blocked the sender
         block_check = session.exec(
@@ -246,7 +326,7 @@ def send_message(
         ).first()
         if block_check:
             raise HTTPException(status_code=403, detail="You are blocked by this user")
-        
+
         # Check if sender and receiver are friends (accepted request)
         friend_check = session.exec(select(Friend).where(
             Friend.user_id == user.user_id,
@@ -255,7 +335,7 @@ def send_message(
         if not friend_check:
             raise HTTPException(status_code=403, detail="You are not friends with this user")
         # ========== END CHECKS ==========
-        
+
         msg = Message(
             sender_id=user.user_id, sender_username_db=user.username_db,
             receiver_id=receiver.user_id, receiver_username_db=receiver.username_db,
@@ -264,7 +344,7 @@ def send_message(
             timestamp=req.timestamp,
             age=req.age,
             counter=req.counter,
-            )
+        )
         session.add(msg)
         session.commit()
         logger.info(f"Message from {user.username_db} to {req.receiver_username} queued successfully")
@@ -275,6 +355,7 @@ def send_message(
         session.rollback()
         logger.exception("Error sending message")
         raise HTTPException(status_code=500, detail="Internal Server Error")
+
 
 @app.post("/messages/conversations")
 def get_all_conversations(
@@ -317,41 +398,45 @@ def get_all_conversations(
         raise HTTPException(status_code=500, detail=f"Internal Server Error: {e}")
 
 
-
 def format_message_object(msgs) -> dict:
-        """format message object to list of dictionaries"""
-        current_time = int(time.time())
-        return [{
-            "sender_username": m.sender_username_db,
-            "receiver_username": m.receiver_username_db,
-            "ciphertext": m.ciphertext if m.age == 0 or m.age - (current_time - m.timestamp) >= 0 else "0",
-            "nonce": m.nonce,
-            "timestamp": m.timestamp,
-            "age": m.age,
-            "expires_in": m.age - (current_time - m.timestamp) if m.age > 0 else None,
-            "is_delivered": m.is_delivered,
-            "counter": m.counter,
-        } for m in msgs]
+    """format message object to list of dictionaries"""
+    current_time = int(time.time())
+    return [{
+        "sender_username": m.sender_username_db,
+        "receiver_username": m.receiver_username_db,
+        "ciphertext": m.ciphertext if m.age == 0 or m.age - (current_time - m.timestamp) >= 0 else "0",
+        "nonce": m.nonce,
+        "timestamp": m.timestamp,
+        "age": m.age,
+        "expires_in": m.age - (current_time - m.timestamp) if m.age > 0 else None,
+        "is_delivered": m.is_delivered,
+        "counter": m.counter,
+    } for m in msgs]
 
-#====================================Friend Request========================================
+
+#  ====================================Friend Request========================================
 class FriendRequestReq(BaseModel):
     to_username: str
 
+
 class FriendRequestActionReq(BaseModel):
     request_id: int
-    action: str #accept, decline
+    action: str  # accept, decline
+
 
 class RemoveFriendReq(BaseModel):
     friend_username: str
 
+
 class BlockUserReq(BaseModel):
     block_username: str
 
+
 @app.post("/friend-requests/respond")
 def respond_friend_request(
-    req: FriendRequestActionReq,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+        req: FriendRequestActionReq,
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
 ):
     """Respond to a pending friend request."""
     friend_req = session.get(FriendRequest, req.request_id)
@@ -371,7 +456,7 @@ def respond_friend_request(
     elif req.action == "decline":
         friend_req.status = "declined"
         message = "Friend request declined"
-    
+
     else:
         raise HTTPException(status_code=400, detail="Invalid action")
 
@@ -380,18 +465,19 @@ def respond_friend_request(
     session.commit()
     return {"message": message}
 
+
 @app.post("/friend-requests/send")
 def send_friend_request(
-    req: FriendRequestReq,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+        req: FriendRequestReq,
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
 ):
     """Send a friend request to another user."""
     # Find target user
     target = get_valid_user_by_username(req.to_username.strip(), session)
     if target.user_id == current_user.user_id:
         raise HTTPException(status_code=400, detail="Cannot send friend request to yourself")
-    
+
     # Check if already friends 
     friend_check = session.exec(select(Friend).where(
         Friend.user_id == current_user.user_id,
@@ -416,7 +502,7 @@ def send_friend_request(
     ).first()
     if block_check:
         raise HTTPException(status_code=403, detail="You are blocked by this user")
-    
+
     # Create request
     new_req = FriendRequest(
         from_user_id=current_user.user_id,
@@ -427,10 +513,11 @@ def send_friend_request(
     session.commit()
     return {"message": "Friend request sent"}
 
+
 @app.get("/friend-requests/received")
 def get_received_requests(
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
 ):
     """List pending friend requests sent to current user."""
     requests = session.exec(
@@ -439,7 +526,7 @@ def get_received_requests(
             FriendRequest.status == "pending"
         )
     ).all()
-    
+
     result = []
     for r in requests:
         from_user = session.exec(select(User).where(User.user_id == r.from_user_id)).first()
@@ -450,13 +537,14 @@ def get_received_requests(
                 "from_verification_code": from_user.verification_code_db,
                 "created_at": r.created_at  ###
             })
-    
+
     return {"requests": result}
+
 
 @app.get("/friend-requests/sent")
 def get_sent_requests(
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
 ):
     """List pending friend requests sent by current user."""
     requests = session.exec(
@@ -465,7 +553,7 @@ def get_sent_requests(
             FriendRequest.status == "pending"
         )
     ).all()
-    
+
     result = []
     for r in requests:
         to_user = session.exec(select(User).where(User.user_id == r.to_user_id)).first()
@@ -476,13 +564,14 @@ def get_sent_requests(
                 "to_verification_code": to_user.verification_code_db,
                 "created_at": r.created_at
             })
-    
+
     return {"requests": result}
+
 
 @app.get("/friends")
 def get_friends(
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
 ):
     """List all accepted friends."""
     # Get all accepted requests where current_user is either sender or receiver
@@ -498,18 +587,21 @@ def get_friends(
         })
     return {"friends": result}
 
+
 @app.post("/friends/remove")
 def remove_friend(
-    req: RemoveFriendReq,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+        req: RemoveFriendReq,
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
 ):
     """Remove an existing friend (delete the accepted friend request)."""
     target = get_valid_user_by_username(req.friend_username.strip(), session)
-    
+
     #link1 for current user, link2 for target user
-    link1 = session.exec(select(Friend).where(Friend.user_id == current_user.user_id, Friend.friend_id == target.user_id)).first()
-    link2 = session.exec(select(Friend).where(Friend.user_id == target.user_id, Friend.friend_id == current_user.user_id)).first()
+    link1 = session.exec(
+        select(Friend).where(Friend.user_id == current_user.user_id, Friend.friend_id == target.user_id)).first()
+    link2 = session.exec(
+        select(Friend).where(Friend.user_id == target.user_id, Friend.friend_id == current_user.user_id)).first()
 
     if not link1 or not link2:
         raise HTTPException(status_code=404, detail="Friend not found")
@@ -518,18 +610,19 @@ def remove_friend(
     session.commit()
     return {"message": "Friend removed"}
 
+
 #====================================Block / Unblock User========================================
 @app.post("/users/block")
 def block_user(
-    req: BlockUserReq,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+        req: BlockUserReq,
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
 ):
     """Block another user."""
     target = get_valid_user_by_username(req.block_username.strip(), session)
     if target.user_id == current_user.user_id:
         raise HTTPException(status_code=400, detail="Cannot block yourself")
-    
+
     # Check if already blocked
     existing = session.exec(
         select(BlockedUser).where(
@@ -539,11 +632,13 @@ def block_user(
     ).first()
     if existing:
         raise HTTPException(status_code=400, detail="User already blocked")
-    
+
     try:
         # Remove friend link
-        link1 = session.exec(select(Friend).where(Friend.user_id == current_user.user_id, Friend.friend_id == target.user_id)).first()
-        link2 = session.exec(select(Friend).where(Friend.user_id == target.user_id, Friend.friend_id == current_user.user_id)).first()
+        link1 = session.exec(
+            select(Friend).where(Friend.user_id == current_user.user_id, Friend.friend_id == target.user_id)).first()
+        link2 = session.exec(
+            select(Friend).where(Friend.user_id == target.user_id, Friend.friend_id == current_user.user_id)).first()
         if link1:
             session.delete(link1)
         if link2:
@@ -552,7 +647,7 @@ def block_user(
         session.rollback()
         logger.exception("Error removing friend when blocking user")
         raise HTTPException(status_code=500, detail="Internal Server Error")
-    
+
     # Change pending friend requests to declined
     friend_req = session.exec(select(FriendRequest).where(
         ((FriendRequest.from_user_id == current_user.user_id) & (FriendRequest.to_user_id == target.user_id)) |
@@ -563,18 +658,19 @@ def block_user(
         friend_req.status = "declined"
         friend_req.updated_at = int(time.time())
         session.add(friend_req)
-    
+
     # Add block
     block = BlockedUser(user_id=current_user.user_id, blocked_user_id=target.user_id)
     session.add(block)
     session.commit()
     return {"message": "User blocked"}
 
+
 @app.post("/users/unblock")
 def unblock_user(
-    req: BlockUserReq,
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+        req: BlockUserReq,
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
 ):
     """Unblock a previously blocked user."""
     target = get_valid_user_by_username(req.block_username.strip(), session)
@@ -590,10 +686,11 @@ def unblock_user(
     session.commit()
     return {"message": "User unblocked"}
 
+
 @app.post("/OTP/set")
 def setup_otp(
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
 ):
     try:
         if (session.execute(
@@ -614,10 +711,11 @@ def setup_otp(
         logger.exception("Error setting up OTP")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
 @app.post("/OTP/get-key")
 def get_key(
-    current_user: User = Depends(get_current_user),
-    session: Session = Depends(get_session),
+        current_user: User = Depends(get_current_user),
+        session: Session = Depends(get_session),
 ):
     try:
         if (session.exec(
@@ -630,8 +728,8 @@ def get_key(
         logger.info(f"OTP key retrieved successfully for user {current_user.username_db}")
         return {"message": "OTP key retrieved successfully",
                 "data": {"secret_key": secret
-             }
-        }
+                         }
+                }
     except HTTPException:
         raise
     except Exception:
@@ -639,8 +737,10 @@ def get_key(
         logger.exception("Error retrieving OTP key")
         raise HTTPException(status_code=500, detail="Internal Server Error")
 
+
 class VerifyOTPReq(BaseModel):
     input_code: int
+
 
 @app.post("/OTP/verify")
 def verify_otp(
@@ -651,7 +751,7 @@ def verify_otp(
 ):
     try:
         if (session.exec(
-            select(OTP).where(OTP.user_id == current_user.user_id)
+                select(OTP).where(OTP.user_id == current_user.user_id)
         )).first() is None:
             raise HTTPException(status_code=404, detail="OTP not set up")
         otp_entry = session.exec(
